@@ -37,7 +37,7 @@ export const useWhisperX = (options: UseWhisperXOptions = {}): UseWhisperXReturn
     
     // Performance defaults
     batchSize: 16,
-    chunkLength: 30,
+    chunkLength: 5,
     vadThreshold: 0.5,
     alignmentThreshold: 0.7,
     
@@ -56,6 +56,8 @@ export const useWhisperX = (options: UseWhisperXOptions = {}): UseWhisperXReturn
   
   const [result, setResult] = useState<TranscriptionResult | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [waveform, setWaveform] = useState<Float32Array | null>(null);
+  const [lastAudioChunk, setLastAudioChunk] = useState<AudioChunk | null>(null);
 
   // Initialize engine
   const initializeEngine = useCallback(async () => {
@@ -106,6 +108,11 @@ export const useWhisperX = (options: UseWhisperXOptions = {}): UseWhisperXReturn
 
       engine.on('audioLevel', (level: number) => {
         setState(prev => ({ ...prev, audioLevel: level }));
+      });
+
+      engine.on('audioChunk', (chunk: AudioChunk) => {
+        setLastAudioChunk(chunk);
+        setWaveform(chunk.data);
       });
 
       engine.on('vadComplete', (segments) => {
@@ -262,6 +269,8 @@ export const useWhisperX = (options: UseWhisperXOptions = {}): UseWhisperXReturn
      config,
      result,
      error,
+     waveform,
+     lastAudioChunk,
 
      // Controls
      start,

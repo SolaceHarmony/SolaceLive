@@ -117,7 +117,10 @@ export interface UseWhisperXReturn {
   config: WhisperXConfig;
   result: TranscriptionResult | null;
   error?: Error | null;
-  
+  // Live audio (optional)
+  waveform?: Float32Array | null;
+  lastAudioChunk?: AudioChunk | null;
+
   // Controls
   start: () => Promise<void>;
   stop: () => void;

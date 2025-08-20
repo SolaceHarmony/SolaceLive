@@ -69,7 +69,7 @@ const WhisperXDemo: React.FC = () => {
             </div>
             <div className="p-4">
               <AudioWaveform
-                audioData={new Float32Array(16000)} // Mock audio data
+                audioData={whisperX.waveform ?? new Float32Array(0)}
                 vadSegments={[]}
                 speakerSegments={whisperX.result?.speakers || []}
                 currentTime={0}

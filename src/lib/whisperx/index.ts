@@ -97,13 +97,13 @@ export const DIARIZATION_MODELS = [
 // Default configurations
 export const DEFAULT_WHISPERX_CONFIG: WhisperXConfig = {
   // Model defaults
-  whisperModel: 'large-v3',
+  whisperModel: 'base.en',
   alignmentModel: 'wav2vec2-base',
   diarizationModel: 'pyannote/speaker-diarization',
   
   // Performance defaults
   batchSize: 16,
-  chunkLength: 10,
+  chunkLength: 5,
   vadThreshold: 0.5,
   alignmentThreshold: 0.7,
   

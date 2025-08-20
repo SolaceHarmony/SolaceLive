@@ -14,6 +14,9 @@ export class WhisperXEngine extends EventEmitter {
   private state: WhisperXState;
   private modelStates: ModelLoadingState;
   private audioContext: AudioContext | null = null;
+  private realtimeBuffer: Float32Array[] = [];
+  private realtimeProcessor: ScriptProcessorNode | null = null;
+  private realtimeStream: MediaStream | null = null;
   private models: {
     whisper?: any;
     alignment?: any;
@@ -318,8 +321,10 @@ export class WhisperXEngine extends EventEmitter {
 
     const source = this.audioContext.createMediaStreamSource(stream);
     const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-    
-    const audioBuffer: Float32Array[] = [];
+    this.realtimeProcessor = processor;
+    this.realtimeStream = stream;
+
+    const audioBuffer: Float32Array[] = this.realtimeBuffer;
     const chunkSizeInSamples = this.config.chunkLength * this.config.sampleRate;
     
     processor.onaudioprocess = async (event) => {
@@ -348,6 +353,9 @@ export class WhisperXEngine extends EventEmitter {
           duration: combinedAudio.length / this.config.sampleRate
         };
         
+        // Publish audioChunk for consumers (e.g., waveform UI)
+        this.emit('audioChunk', audioChunk);
+
         // Process in background to avoid blocking audio
         this.processAudio(audioChunk).catch(error => {
           this.emit('error', error);
@@ -362,7 +370,36 @@ export class WhisperXEngine extends EventEmitter {
   stopRealtime(): void {
     this.state.isListening = false;
     this.state.audioLevel = 0;
-    this.emit('realtimeStop');
+    // Flush any remaining audio as a final chunk
+    try {
+      const remainingSamples = this.realtimeBuffer.reduce((s, b) => s + b.length, 0);
+      if (remainingSamples > 0) {
+        const combined = this.combineAudioBuffers(this.realtimeBuffer);
+        this.realtimeBuffer.length = 0;
+        const audioChunk: AudioChunk = {
+          data: combined,
+          timestamp: Date.now(),
+          sampleRate: this.config.sampleRate,
+          channels: this.config.channels,
+          duration: combined.length / this.config.sampleRate
+        };
+        this.emit('audioChunk', audioChunk);
+        // Fire and forget
+        this.processAudio(audioChunk).catch(err => this.emit('error', err));
+      }
+    } catch {
+      // ignore flush errors
+    }
+    // Disconnect processor and stop stream
+    try { this.realtimeProcessor?.disconnect(); } catch {}
+    this.realtimeProcessor = null;
+    try {
+      if (this.realtimeStream) {
+        for (const track of this.realtimeStream.getTracks()) track.stop();
+      }
+    } catch {}
+    this.realtimeStream = null;
+     this.emit('realtimeStop');
   }
 
   private calculateAudioLevel(audioData: Float32Array): number {

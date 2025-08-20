@@ -50,24 +50,21 @@ const TransformersTest: React.FC = () => {
     }
 
     try {
-      setStatus('Processing mock audio...');
-
-      // Create mock audio chunk (1 second of sine wave)
-      const sampleRate = 16000;
-      const duration = 1; // 1 second
-      const audioData = new Float32Array(sampleRate * duration);
-      
-      // Generate a simple sine wave (440 Hz - A note)
-      for (let i = 0; i < audioData.length; i++) {
-        audioData[i] = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.5;
-      }
+      setStatus('Downloading sample speech and transcribing...');
+      const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav';
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`failed to fetch sample: ${resp.status}`);
+      const ab = await resp.arrayBuffer();
+      const ac = new AudioContext();
+      const decoded = await ac.decodeAudioData(ab);
+      const channel = decoded.getChannelData(0);
 
       const audioChunk: AudioChunk = {
-        data: audioData,
+        data: channel,
         timestamp: Date.now(),
-        sampleRate: sampleRate,
-        channels: 1,
-        duration: duration
+        sampleRate: decoded.sampleRate,
+        channels: decoded.numberOfChannels,
+        duration: channel.length / decoded.sampleRate
       };
 
       const transcriptionResult = await engine.processAudio(audioChunk);

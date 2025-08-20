@@ -24,8 +24,8 @@ function mapWhisperModelCandidates(model: string): string[] {
     case 'large-v1': return [`${base}large-v1`];
     case 'large-v2': return [`${base}large-v2`];
     case 'large-v3':
-      // Prefer original repo, then ONNX community fallback
-      return ['openai/whisper-large-v3', `${base}large-v3`];
+      // Use ONNX community turbo build for browser compatibility
+      return [`${base}large-v3-turbo`];
     default:
       return [`${base}base.en`];
   }
