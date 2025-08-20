@@ -29,10 +29,15 @@ export interface WhisperResult {
   duration: number;
 }
 
+interface WhisperBackendModel {
+  modelSize: string;
+  loaded: boolean;
+}
+
 export class WhisperModel {
   private config: Required<WhisperConfig>;
   private isInitialized: boolean = false;
-  private model: any = null;
+  private model: WhisperBackendModel | null = null;
   private audioContext: AudioContext | null = null;
 
   constructor(config: WhisperConfig) {
@@ -48,7 +53,11 @@ export class WhisperModel {
   async initialize(): Promise<void> {
     try {
       // Initialize audio context for preprocessing
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+      type WebAudioWindow = Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+      const w = window as WebAudioWindow;
+      const AudioCtx = w.AudioContext || w.webkitAudioContext;
+      if (!AudioCtx) throw new Error('AudioContext not supported');
+      this.audioContext = new AudioCtx({
         sampleRate: 16000
       });
 
@@ -87,7 +96,7 @@ export class WhisperModel {
     const preprocessedAudio = await this.preprocessAudio(audioChunk);
     
     // Apply VAD segments if provided
-    let audioSegments = vadSegments && vadSegments.length > 0
+    const audioSegments = vadSegments && vadSegments.length > 0
       ? this.extractVADSegments(preprocessedAudio, vadSegments, audioChunk.sampleRate)
       : [preprocessedAudio];
 
@@ -108,7 +117,7 @@ export class WhisperModel {
     return {
       text: fullText.trim(),
       segments: allSegments,
-      language: this.detectLanguage(audioChunk),
+      language: this.detectLanguage(),
       duration: audioChunk.data.length / audioChunk.sampleRate
     };
   }
@@ -250,7 +259,7 @@ export class WhisperModel {
     return segments;
   }
 
-  private detectLanguage(audioChunk: AudioChunk): string {
+  private detectLanguage(): string {
     // In a real implementation, this would detect the language
     // For now, return default language or config language
     return this.config.language === 'auto' ? 'en' : this.config.language;
@@ -259,7 +268,6 @@ export class WhisperModel {
   // Feature extraction methods for advanced processing
   extractFeatures(audio: Float32Array): Float32Array {
     // Extract Mel-spectrogram features (simplified)
-    const windowSize = 400;
     const hopLength = 160;
     const melFilters = 80;
     

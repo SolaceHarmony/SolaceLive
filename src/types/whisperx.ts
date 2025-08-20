@@ -100,8 +100,8 @@ export interface AudioChunk {
 
 export interface ProcessingPipeline {
   vad: (audio: AudioChunk) => Promise<VADSegment[]>;
-  transcribe: (audio: AudioChunk) => Promise<{ text: string; segments: any[] }>;
-  align: (transcription: any, audio: AudioChunk) => Promise<AlignmentResult>;
+  transcribe: (audio: AudioChunk) => Promise<{ text: string; segments: unknown[] }>;
+  align: (transcription: unknown, audio: AudioChunk) => Promise<AlignmentResult>;
   diarize: (audio: AudioChunk, alignment: AlignmentResult) => Promise<DiarizationResult>;
 }
 
@@ -228,7 +228,7 @@ export interface ModelLoadingState {
 export interface WhisperXEvent {
   type: string;
   timestamp: number;
-  data: any;
+  data: unknown;
 }
 
 export interface WhisperXEventHandlers {

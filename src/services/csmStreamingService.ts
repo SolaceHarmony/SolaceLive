@@ -1,3 +1,10 @@
+type ChatDelta = {
+  audio_tokens?: number[];
+  audio?: string;
+  content?: string;
+  emotional_context?: { emotion?: string; prosody?: unknown; [k: string]: unknown };
+};
+
 export class CSMStreamingService {
   private baseUrl: string;
   private isStreaming: boolean = false;
@@ -7,8 +14,12 @@ export class CSMStreamingService {
 
   constructor(baseUrl: string = 'http://localhost:1234/v1') {
     this.baseUrl = baseUrl;
-    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    type WebAudioWindow = Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+    const w = window as WebAudioWindow;
+    const AudioCtx = w.AudioContext || w.webkitAudioContext;
+    this.audioContext = AudioCtx ? new AudioCtx() : null;
   }
+
 
   async startStreamingConversation(
     text: string,
@@ -24,7 +35,7 @@ export class CSMStreamingService {
     this.audioQueue = [];
 
     try {
-      const requestBody: any = {
+      const requestBody: Record<string, unknown> = {
         model: 'local-model',
         input: text,
         voice: 'default',
@@ -36,7 +47,7 @@ export class CSMStreamingService {
 
       if (referenceAudio) {
         const base64Audio = this.arrayBufferToBase64(referenceAudio);
-        requestBody.reference_audio = base64Audio;
+        (requestBody as { reference_audio?: string }).reference_audio = base64Audio;
       }
 
       const response = await fetch(`${this.baseUrl}/audio/speech/stream`, {
@@ -74,8 +85,8 @@ export class CSMStreamingService {
             }
             
             try {
-              const parsed = JSON.parse(data);
-              
+              const parsed: { audio?: string; text?: string } = JSON.parse(data);
+
               if (parsed.audio) {
                 const audioData = this.base64ToArrayBuffer(parsed.audio);
                 this.audioQueue.push(audioData);
@@ -195,8 +206,8 @@ export class CSMStreamingService {
           }
           
           try {
-            const parsed = JSON.parse(data);
-            
+            const parsed: { choices?: Array<{ delta?: ChatDelta }> } = JSON.parse(data);
+
             // Handle wave tokens and audio data
             if (parsed.choices?.[0]?.delta?.audio_tokens) {
               const audioData = await this.processWaveTokens(parsed.choices[0].delta.audio_tokens);
@@ -222,7 +233,7 @@ export class CSMStreamingService {
             
             // Handle emotional and prosody tokens
             if (parsed.choices?.[0]?.delta?.emotional_context) {
-              this.processEmotionalContext(parsed.choices[0].delta.emotional_context);
+              this.processEmotionalContext(parsed.choices[0].delta!.emotional_context!);
             }
           } catch (e) {
             console.error('Error parsing CSM response:', e);
@@ -378,7 +389,7 @@ export class CSMStreamingService {
     }
   }
 
-  private processEmotionalContext(emotionalContext: any): void {
+  private processEmotionalContext(emotionalContext: { emotion?: string; prosody?: unknown; [k: string]: unknown }): void {
     // Process emotional and prosody information for future use
     // This could be used to adjust audio processing or UI feedback
     console.log('Emotional context:', emotionalContext);
@@ -403,16 +414,15 @@ export class CSMStreamingService {
       
       if (response.ok) {
         const data = await response.json();
-        const models = data.data || [];
-        
+        const models: Array<{ id: string; capabilities?: string[] }> = data.data || [];
         // Look for CSM model or wave token support
-        const hasCSMSupport = models.some((model: any) => 
-          model.id.includes('csm') || 
-          model.capabilities?.includes('wave_tokens') ||
-          model.capabilities?.includes('audio_generation')
-        );
-        
-        return hasCSMSupport;
+        const hasCSMSupport = models.some((model) =>
+           model.id.includes('csm') ||
+           model.capabilities?.includes('wave_tokens') ||
+           model.capabilities?.includes('audio_generation')
+         );
+
+         return hasCSMSupport;
       }
       
       return false;

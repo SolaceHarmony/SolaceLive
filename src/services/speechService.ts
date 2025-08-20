@@ -1,13 +1,18 @@
 export class SpeechService {
-  private recognition: any;
+  private recognition: SpeechRecognition | null = null;
   private synthesis: SpeechSynthesis;
   private isListening: boolean = false;
 
   constructor() {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
-    if (SpeechRecognition) {
-      this.recognition = new SpeechRecognition();
+    type WebSpeechWindow = Window & typeof globalThis & {
+      webkitSpeechRecognition?: new () => SpeechRecognition;
+      SpeechRecognition?: new () => SpeechRecognition;
+    };
+    const w = window as WebSpeechWindow;
+    const SpeechRecognitionCtor = w.SpeechRecognition || w.webkitSpeechRecognition;
+
+    if (SpeechRecognitionCtor) {
+      this.recognition = new SpeechRecognitionCtor();
       this.recognition.continuous = true;
       this.recognition.interimResults = true;
       this.recognition.lang = 'en-US';
@@ -27,12 +32,12 @@ export class SpeechService {
       let timeoutId: ReturnType<typeof setTimeout>;
 
       const stopListening = () => {
-        this.recognition.stop();
+        this.recognition!.stop();
         this.isListening = false;
         clearTimeout(timeoutId);
       };
 
-      this.recognition.onresult = (event: any) => {
+      this.recognition.onresult = (event: SpeechRecognitionEvent) => {
         clearTimeout(timeoutId);
         
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -51,7 +56,7 @@ export class SpeechService {
         }, 1500);
       };
 
-      this.recognition.onerror = (event: any) => {
+      this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         stopListening();
         reject(new Error(`Speech recognition error: ${event.error}`));
       };
@@ -69,7 +74,7 @@ export class SpeechService {
       
       audio.onended = () => {
         URL.revokeObjectURL(audioUrl);
-        this.recognition.start();
+        this.recognition!.start();
         this.isListening = true;
       };
 
@@ -82,7 +87,7 @@ export class SpeechService {
       throw new Error('Speech recognition not supported');
     }
 
-    this.recognition.onresult = (event: any) => {
+    this.recognition.onresult = (event: SpeechRecognitionEvent) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         const isFinal = event.results[i].isFinal;
@@ -90,12 +95,12 @@ export class SpeechService {
       }
     };
 
-    this.recognition.onerror = (event: any) => {
+    this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('Speech recognition error:', event.error);
       if (event.error === 'no-speech' || event.error === 'audio-capture') {
         setTimeout(() => {
           if (this.isListening) {
-            this.recognition.start();
+            this.recognition!.start();
           }
         }, 100);
       }
@@ -103,7 +108,7 @@ export class SpeechService {
 
     this.recognition.onend = () => {
       if (this.isListening) {
-        this.recognition.start();
+        this.recognition!.start();
       }
     };
 
@@ -186,4 +191,28 @@ export class SpeechService {
       this.synthesis.cancel();
     }
   }
+}
+
+// Minimal SpeechRecognition type declarations
+interface SpeechRecognitionEvent {
+  resultIndex: number;
+  results: Array<{
+    0: { transcript: string };
+    isFinal: boolean;
+  }>;
+}
+
+interface SpeechRecognitionErrorEvent {
+  error: string;
+}
+
+interface SpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
 }

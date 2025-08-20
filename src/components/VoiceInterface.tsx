@@ -29,10 +29,12 @@ export const VoiceInterface: React.FC<VoiceInterfaceProps> = ({ onTranscription 
 
   useEffect(() => {
     checkLMStudioConnection();
+    const audio = audioService.current;
     return () => {
-      audioService.current.disconnect();
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      const frameId = animationFrameRef.current;
+      audio.disconnect();
+      if (frameId) {
+        cancelAnimationFrame(frameId);
       }
     };
   }, []);

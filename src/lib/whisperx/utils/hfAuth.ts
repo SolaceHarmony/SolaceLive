@@ -28,7 +28,7 @@ function getHFTokenFromRuntime(): string | null {
   }
   try {
     // Vite exposes client env via import.meta.env
-    const viteToken = (import.meta as any).env?.VITE_HF_TOKEN as string | undefined;
+    const viteToken = import.meta?.env?.VITE_HF_TOKEN as string | undefined;
     return viteToken || null;
   } catch {
     return null;

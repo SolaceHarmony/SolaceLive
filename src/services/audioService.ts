@@ -9,7 +9,14 @@ export class AudioService {
   private analyser: AnalyserNode | null = null;
 
   constructor() {
-    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    type WebAudioWindow = Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+    const w = window as WebAudioWindow;
+    const AudioCtx = w.AudioContext || w.webkitAudioContext;
+    if (AudioCtx) {
+      this.audioContext = new AudioCtx();
+    } else {
+      this.audioContext = null;
+    }
   }
 
   async connectToRoom(url: string, token: string): Promise<void> {

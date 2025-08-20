@@ -154,6 +154,44 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
+// Lightweight Hugging Face mirror: proxy files and API under /hf/*
+// Example: /hf/onnx-community/whisper-large-v3-turbo/resolve/main/config.json
+app.all('/hf/*', async (req, res) => {
+  try {
+    const upstream = `https://huggingface.co${req.originalUrl.replace(/^\/hf/, '')}`;
+    const headers = new Headers();
+    // Forward client Authorization if present
+    const auth = req.headers['authorization'];
+    if (typeof auth === 'string' && auth) {
+      headers.set('authorization', auth);
+    } else if (process.env.HF_TOKEN) {
+      headers.set('authorization', `Bearer ${process.env.HF_TOKEN}`);
+    }
+    // Preserve conditional headers to support caching
+    const condHeaders = ['if-none-match', 'if-modified-since'];
+    for (const h of condHeaders) {
+      const v = req.headers[h];
+      if (typeof v === 'string') headers.set(h, v);
+    }
+
+    const r = await fetch(upstream, { method: req.method, headers });
+    res.status(r.status);
+    // Copy response headers (avoid hop-by-hop headers)
+    r.headers.forEach((value, key) => {
+      if (key.toLowerCase() === 'transfer-encoding') return;
+      res.setHeader(key, value);
+    });
+    if (req.method === 'HEAD' || r.status === 304) {
+      return res.end();
+    }
+    const ab = await r.arrayBuffer();
+    return res.send(Buffer.from(ab));
+  } catch (err) {
+    console.error('hf proxy error', err);
+    res.status(502).json({ error: String(err) });
+  }
+});
+
 app.listen(port, () => {
   console.log(`[server] listening on http://localhost:${port}`);
 });

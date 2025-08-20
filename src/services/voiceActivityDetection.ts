@@ -19,7 +19,11 @@ export class VoiceActivityDetection {
 
   async initialize(stream: MediaStream): Promise<void> {
     try {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      type WebAudioWindow = Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+      const w = window as WebAudioWindow;
+      const AudioCtx = w.AudioContext || w.webkitAudioContext;
+      if (!AudioCtx) throw new Error('AudioContext not supported');
+      this.audioContext = new AudioCtx();
       this.mediaStream = stream;
       
       const source = this.audioContext.createMediaStreamSource(stream);

@@ -42,11 +42,11 @@ export const StreamingVoiceInterface: React.FC<StreamingVoiceInterfaceProps> = (
   useEffect(() => {
     checkCSMConnection();
     initializeWhisperWasm();
+    const csm = csmService.current;
+    const vad = vadService.current;
+    const whisper = whisperService.current;
+    const intervalId = intervalRef.current;
     return () => {
-      const csm = csmService.current;
-      const vad = vadService.current;
-      const whisper = whisperService.current;
-      const intervalId = intervalRef.current;
       csm.stopStreaming();
       vad.dispose();
       whisper.dispose();

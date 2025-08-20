@@ -123,10 +123,13 @@ export const useWhisperX = (options: UseWhisperXOptions = {}): UseWhisperXReturn
       engine.on('diarizationComplete', (diarization) => {
         if (diarization?.speakers.length > 0) {
           const currentSpeaker = diarization.speakers[diarization.speakers.length - 1]?.speaker;
-          if (currentSpeaker !== state.currentSpeaker) {
-            setState(prev => ({ ...prev, currentSpeaker }));
-            callbacksRef.current.onSpeakerChange?.(currentSpeaker);
-          }
+          setState(prev => {
+            if (currentSpeaker !== prev.currentSpeaker) {
+              callbacksRef.current.onSpeakerChange?.(currentSpeaker);
+              return { ...prev, currentSpeaker };
+            }
+            return prev;
+          });
         }
       });
 
@@ -155,13 +158,6 @@ export const useWhisperX = (options: UseWhisperXOptions = {}): UseWhisperXReturn
       }
     };
   }, [initializeEngine]);
-
-  // Auto-start if enabled
-  useEffect(() => {
-    if (options.autoStart && state.isInitialized && !state.isListening) {
-      startRealtime();
-    }
-  }, [state.isInitialized, options.autoStart]);
 
   // Control functions
   const start = useCallback(async () => {
@@ -239,7 +235,7 @@ export const useWhisperX = (options: UseWhisperXOptions = {}): UseWhisperXReturn
       reader.onerror = () => reject(new Error('Failed to read file'));
       reader.readAsArrayBuffer(file);
     });
-  }, [processAudio]);
+  }, [processAudio, state.isInitialized]);
 
   const startRealtime = useCallback(async (callbacks?: WhisperXCallbacks) => {
     if (callbacks) {
@@ -253,32 +249,39 @@ export const useWhisperX = (options: UseWhisperXOptions = {}): UseWhisperXReturn
     callbacksRef.current = {};
   }, [stop]);
 
-  return {
-    // State
-    state,
-    config,
-    result,
-    error,
-    
-    // Controls
-    start,
-    stop,
-    pause,
-    resume,
-    reset,
-    
-    // Configuration
-    updateConfig,
-    
-    // Audio processing
-    processAudio,
-    processFile,
-    
-    // Real-time
-    startRealtime,
-    stopRealtime
-  };
-};
+  // Auto-start if enabled (placed after startRealtime is defined)
+  useEffect(() => {
+    if (options.autoStart && state.isInitialized && !state.isListening) {
+      startRealtime();
+    }
+  }, [options.autoStart, state.isInitialized, state.isListening, startRealtime]);
+
+   return {
+     // State
+     state,
+     config,
+     result,
+     error,
+
+     // Controls
+     start,
+     stop,
+     pause,
+     resume,
+     reset,
+
+     // Configuration
+     updateConfig,
+
+     // Audio processing
+     processAudio,
+     processFile,
+
+     // Real-time
+     startRealtime,
+     stopRealtime
+   };
+ };
 
 // Hook for multiple instances
 export const useWhisperXInstances = () => {
@@ -327,7 +330,7 @@ export const useWhisperXInstances = () => {
       averageRTF,
       peakMemoryUsage
     };
-  }, [instances]);
+  }, []);
 
   return {
     instances,

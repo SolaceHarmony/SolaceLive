@@ -13,8 +13,7 @@ const WhisperXContext = createContext<WhisperXContextValue | null>(null);
 
 export const WhisperXProvider: React.FC<WhisperXProviderProps> = ({
   children,
-  defaultConfig = {},
-  enableGlobalPerformanceMonitoring: _enableGlobalPerformanceMonitoring = true
+  defaultConfig = {}
 }) => {
   const {
     instances,

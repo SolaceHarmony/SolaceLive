@@ -1,7 +1,15 @@
 import { WhisperTranscriber } from 'whisper-web-transcriber';
 
+type WebAudioWindow = Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+
+interface WhisperInstance {
+  transcribe: (audio: Float32Array) => Promise<{ text?: string } | null | undefined>;
+  setLanguage?: (language: string) => void;
+  dispose?: () => void;
+}
+
 export class WhisperWasmService {
-  private whisper: any = null;
+  private whisper: WhisperInstance | null = null;
   private isInitialized: boolean = false;
   private isTranscribing: boolean = false;
   private audioBuffer: Float32Array[] = [];
@@ -15,12 +23,12 @@ export class WhisperWasmService {
     try {
       console.log('Initializing Whisper WASM...');
       
-      this.whisper = new WhisperTranscriber({
+      this.whisper = (new WhisperTranscriber({
         modelSize: modelName,
         onTranscription: (text: string) => {
           console.log('Whisper transcription:', text);
         }
-      });
+      }) as unknown) as WhisperInstance;
 
       // Wait for model to load (simplified for now)
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -141,7 +149,9 @@ export class WhisperWasmService {
     try {
       // Convert blob to the format expected by WhisperTranscriber
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const w = window as WebAudioWindow;
+      const AudioCtx = w.AudioContext || w.webkitAudioContext;
+      const audioContext = new AudioCtx();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
       
       // Get the first channel (mono)
@@ -159,7 +169,9 @@ export class WhisperWasmService {
   private async arrayBufferToFloat32Array(arrayBuffer: ArrayBuffer): Promise<Float32Array> {
     try {
       // Decode audio data using Web Audio API
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const w = window as WebAudioWindow;
+      const AudioCtx = w.AudioContext || w.webkitAudioContext;
+      const audioContext = new AudioCtx();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
       
       // Get the first channel (mono)
@@ -302,7 +314,8 @@ export class WhisperWasmService {
       }
 
       // Check for AudioContext support
-      if (typeof (window.AudioContext || (window as any).webkitAudioContext) === 'undefined') {
+      const w = window as WebAudioWindow;
+      if (typeof (w.AudioContext || w.webkitAudioContext) === 'undefined') {
         console.warn('AudioContext not supported');
         return false;
       }
@@ -324,5 +337,5 @@ export class WhisperWasmService {
       console.error('Error checking Whisper WASM support:', error);
       return false;
     }
-  }
+   }
 }

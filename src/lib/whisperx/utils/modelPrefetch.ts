@@ -12,7 +12,8 @@ export function detectDevice(): DeviceHint {
 export function resolveWhisperModel(model: string): string {
   const base = 'onnx-community/whisper-';
   switch (model) {
-    case 'large-v3': return `${base}large-v3`;
+    // HF repo note: the valid repo is whisper-large-v3-turbo (not whisper-large-v3)
+    case 'large-v3': return `${base}large-v3-turbo`;
     case 'tiny': return `${base}tiny`;
     case 'tiny.en': return `${base}tiny.en`;
     case 'base': return `${base}base`;
@@ -27,12 +28,28 @@ export function resolveWhisperModel(model: string): string {
   }
 }
 
+// Optionally resolve through a backend mirror if configured
+function maybeMirror(modelId: string): string {
+  try {
+    // Vite client env
+    const mirror = (import.meta?.env?.VITE_HF_MIRROR as string | undefined)?.replace(/\/$/, '');
+    if (mirror && /^https?:\/\//.test(mirror)) {
+      return `${mirror}/${modelId}`;
+    }
+  } catch {
+    // ignore
+  }
+  return modelId;
+}
+
 // For speech models, prefer vocab.json over tokenizer.json when probing repo files
 async function probeTokenizerFiles(modelId: string, onLog?: (msg: string) => void): Promise<boolean> {
   const base = `https://huggingface.co/${modelId}/resolve/main`;
   const candidates = [
     'vocab.json',          // speech models (e.g., wav2vec2 / CTC)
     'tokenizer.json',      // text models
+    'preprocessor_config.json', // Whisper repos often include this
+    'config.json',
   ];
   const token = getHFToken();
   const headers: HeadersInit | undefined = token ? { Authorization: `Bearer ${token}` } : undefined;
@@ -46,6 +63,8 @@ async function probeTokenizerFiles(modelId: string, onLog?: (msg: string) => voi
       }
       if (resp.status === 401 || resp.status === 403) {
         onLog?.(`Auth required to access ${file} in ${modelId}`);
+      } else if (resp.status === 404) {
+        onLog?.(`Missing ${file} in ${modelId} (404)`);
       }
     } catch (e) {
       void e; // ignore network failures; the pipeline call will still attempt to load
@@ -59,9 +78,11 @@ export async function prefetchWhisper(model: string, device: DeviceHint, onLog?:
   // Ensure any previously saved HF token is applied to the Transformers env
   applyHFTokenFromStorage();
 
-  const modelId = resolveWhisperModel(model);
+  const resolved = resolveWhisperModel(model);
+  const modelId = maybeMirror(resolved);
   // Probe tokenizer files (logs only). Do not alter control flow.
-  await probeTokenizerFiles(modelId, onLog);
+  // Only probe upstream to avoid mirror differences
+  await probeTokenizerFiles(resolved, onLog);
   onLog?.(`Downloading Whisper model: ${modelId} (${device ?? 'wasm'})`);
   try {
     const asr = await pipeline('automatic-speech-recognition', modelId, { device });
@@ -84,6 +105,8 @@ export async function prefetchWhisper(model: string, device: DeviceHint, onLog?:
         ? 'Your Hugging Face token may lack access to this repository. Ensure you have accepted any model licenses.'
         : 'Add a Hugging Face access token (Save token in controls) and try again.';
       onLog?.(`Failed: ${msg}\nHint: ${hint}`);
+    } else if (/404/.test(msg) || /Repository not found/i.test(msg)) {
+      onLog?.('Failed: Repository not found. Using "large-v3" maps to onnx-community/whisper-large-v3-turbo.');
     } else {
       onLog?.(`Failed: ${msg}`);
     }

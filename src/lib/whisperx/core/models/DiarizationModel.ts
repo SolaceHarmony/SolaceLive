@@ -25,10 +25,19 @@ export interface SpeakerCluster {
   confidence: number;
 }
 
+interface DiarizationBackendModel {
+  modelName: string;
+  loaded: boolean;
+  embeddingDim: number;
+  segmentation: { loaded: boolean };
+  embedding: { loaded: boolean };
+  clustering: { loaded: boolean };
+}
+
 export class DiarizationModel {
   private config: Required<DiarizationConfig>;
   private isInitialized: boolean = false;
-  private model: any = null;
+  private model: DiarizationBackendModel | null = null;
   private audioContext: AudioContext | null = null;
   private speakerClusters: Map<string, SpeakerCluster> = new Map();
   private speakerCounter: number = 0;
@@ -52,7 +61,11 @@ export class DiarizationModel {
 
   async initialize(): Promise<void> {
     try {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+      type WebAudioWindow = Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+      const w = window as WebAudioWindow;
+      const AudioCtx = w.AudioContext || w.webkitAudioContext;
+      if (!AudioCtx) throw new Error('AudioContext not supported');
+      this.audioContext = new AudioCtx({
         sampleRate: this.SAMPLE_RATE
       });
 
@@ -87,7 +100,7 @@ export class DiarizationModel {
     });
   }
 
-  async diarize(audioChunk: AudioChunk, alignmentResult?: AlignmentResult | null): Promise<DiarizationResult> {
+  async diarize(audioChunk: AudioChunk, _alignmentResult?: AlignmentResult | null): Promise<DiarizationResult> {
     if (!this.isInitialized) {
       throw new Error('DiarizationModel not initialized');
     }
@@ -102,8 +115,8 @@ export class DiarizationModel {
     const clusters = await this.clusterSpeakers(embeddings);
     
     // Create speaker segments with temporal boundaries
-    const speakerSegments = this.createSpeakerSegments(clusters, alignmentResult);
-    
+    const speakerSegments = this.createSpeakerSegments(clusters);
+
     // Update persistent speaker models
     this.updateSpeakerModels(clusters);
     
@@ -417,7 +430,7 @@ export class DiarizationModel {
     return refined;
   }
 
-  private createSpeakerSegments(clusters: SpeakerCluster[], alignmentResult?: AlignmentResult | null): SpeakerSegment[] {
+  private createSpeakerSegments(clusters: SpeakerCluster[]): SpeakerSegment[] {
     const segments: SpeakerSegment[] = [];
     
     for (const cluster of clusters) {
