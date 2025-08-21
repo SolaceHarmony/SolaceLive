@@ -9,11 +9,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        target: process.env.VITE_API_TARGET || 'http://localhost:8787',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:8787',
+        target: process.env.VITE_API_TARGET || 'http://localhost:8787',
         changeOrigin: true,
       },
       // WebSocket proxy to Moshi TypeScript server

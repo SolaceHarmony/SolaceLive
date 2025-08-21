@@ -3,7 +3,7 @@
  * Replaces fetch-based streaming with packet WebSocket for better real-time performance
  */
 
-import { PacketWebSocket, SolaceLivePacketClient } from '../../../experiments/packet-websocket/packet-websocket';
+import { PacketWebSocket, SolaceLivePacketClient } from '../lib/packet-websocket';
 
 // Simple EventEmitter implementation for browser compatibility
 class EventEmitter {
@@ -210,12 +210,34 @@ export class PacketStreamingService extends EventEmitter {
   private setupPacketHandlers(): void {
     if (!this.packetClient) return;
 
-    // Note: Event handling would need to be implemented via the underlying PacketWebSocket
-    // For now, we'll simulate the events through polling or direct access
-    
-    // This is a simplified approach - in production, we'd extend SolaceLivePacketClient
-    // to expose EventEmitter interface
-    console.log('[PacketStreaming] Event handlers setup (simplified implementation)');
+    // Bridge low-level client events to service-level events
+    this.packetClient.on('audioChunk', (audioData: Float32Array, timestamp: number) => {
+      try {
+        const buf = audioData?.buffer ?? new ArrayBuffer(0);
+        this.emit('audioChunk', buf, timestamp);
+      } catch (e) {
+        console.error('[PacketStreaming] audioChunk handler error:', e);
+      }
+    });
+
+    this.packetClient.on('textPartial', (text: string, timestamp: number) => {
+      this.emit('textPartial', text, timestamp);
+    });
+
+    this.packetClient.on('textFinal', (text: string, timestamp: number) => {
+      this.emit('textFinal', text, timestamp);
+    });
+
+    this.packetClient.on('metadata', (metadata: any, timestamp: number) => {
+      this.emit('metadata', metadata, timestamp);
+    });
+
+    this.packetClient.on('disconnected', () => {
+      this.isConnected = false;
+      this.emit('disconnected');
+    });
+
+    console.log('[PacketStreaming] Event handlers wired');
   }
 
   private chunkAudioData(audioData: ArrayBuffer, chunkSize: number = 4096): Float32Array[] {
