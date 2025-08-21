@@ -11,6 +11,7 @@ import { AttentionMechanism } from '../../experiments/neuromorphic-research/atte
 import { GammaOscillator } from '../../experiments/neuromorphic-research/gamma-oscillator';
 import { HebbianNetwork } from '../../experiments/neuromorphic-research/hebbian-learning';
 import { QoSNeuralNetwork } from '../../experiments/neuromorphic-research/qos-neural-network';
+import { performanceOptimizer } from './PerformanceOptimizer';
 
 export interface ConsciousnessState {
   arousal: number;           // 0-1, general activation level
@@ -92,9 +93,14 @@ export class ConsciousnessOrchestrator {
    * Process one frame of consciousness
    */
   private async processConsciousnessFrame(): Promise<void> {
+    performanceOptimizer.startTiming('consciousness-cycle');
+    
     // 1. Gather packets from all streams
     const allPackets = this.gatherPackets();
-    if (allPackets.length === 0) return;
+    if (allPackets.length === 0) {
+      performanceOptimizer.endTiming('consciousness-cycle');
+      return;
+    }
     
     // 2. Apply attention mechanism to select focus
     const interference = this.attention.calculateInterference(allPackets);
@@ -109,11 +115,15 @@ export class ConsciousnessOrchestrator {
     
     // 4. Race thoughts for competitive selection
     if (focusedPackets.length > 1) {
+      performanceOptimizer.startTiming('thought-race');
       const winner = await this.thoughtRacer.race(focusedPackets);
+      performanceOptimizer.endTiming('thought-race');
       this.metrics.thoughtsRaced++;
       
       // 5. Generate gamma burst for binding
+      performanceOptimizer.startTiming('gamma-binding');
       const boundPackets = this.gammaOsc.generateThetaGamma(winner);
+      performanceOptimizer.endTiming('gamma-binding');
       this.metrics.gammaBindingEvents++;
       
       // 6. Update working memory
@@ -131,6 +141,11 @@ export class ConsciousnessOrchestrator {
     this.updateQoSPriorities(focusedPackets);
     
     this.metrics.packetsProcessed += allPackets.length;
+    
+    // Record performance metrics
+    const cycleTime = performanceOptimizer.endTiming('consciousness-cycle');
+    performanceOptimizer.recordConsciousnessCycle(cycleTime);
+    performanceOptimizer.recordPacketProcessing(allPackets, cycleTime);
   }
   
   /**
@@ -270,6 +285,21 @@ export class ConsciousnessOrchestrator {
   }
   
   /**
+   * Get performance profile for optimization
+   */
+  public getPerformanceProfile() {
+    return performanceOptimizer.generateProfile(this.metrics);
+  }
+  
+  /**
+   * Apply automatic performance optimizations
+   */
+  public autoOptimize() {
+    const profile = this.getPerformanceProfile();
+    return performanceOptimizer.autoOptimize(profile);
+  }
+  
+  /**
    * Reset consciousness to baseline
    */
   public reset(): void {
@@ -287,5 +317,8 @@ export class ConsciousnessOrchestrator {
     this.metrics.attentionShifts = 0;
     this.metrics.gammaBindingEvents = 0;
     this.metrics.hebbianUpdates = 0;
+    
+    // Reset performance tracking
+    performanceOptimizer.reset();
   }
 }
