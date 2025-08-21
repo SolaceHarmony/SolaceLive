@@ -1,0 +1,13 @@
+{
+  "name": "solace-live-root",
+  "private": true,
+  "scripts": {
+    "dev": "npm -C solace-live install && npm -C solace-live run dev",
+    "build": "npm -C solace-live run build",
+    "preview": "npm -C solace-live run preview",
+    "postinstall": "npm -C solace-live install"
+  },
+  "dependencies": {
+    "whisper-web-transcriber": "^0.2.4"
+  }
+}

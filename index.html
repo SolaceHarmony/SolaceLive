@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="refresh" content="0; url=./solace-live/dist/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Redirecting to SolaceLive UI…</title>
+    <script>
+      // Preserve query string and hash on redirect
+      (function() {
+        var target = './solace-live/dist/' + (location.search || '') + (location.hash || '');
+        if (location.pathname !== '/solace-live/dist/') {
+          location.replace(target);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Redirecting to the new SolaceLive UI… If you are not redirected automatically, <a href="./solace-live/dist/">click here</a>.</p>
+  </body>
+</html>

@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧠 Neural Packet Observatory</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0a;
+            color: #00ff41;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            height: 100vh;
+            gap: 2px;
+        }
+        
+        .panel {
+            background: #1a1a1a;
+            border: 1px solid #00ff41;
+            padding: 10px;
+            overflow: hidden;
+        }
+        
+        .panel h2 {
+            color: #00ff41;
+            margin-bottom: 10px;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+        
+        canvas {
+            width: 100%;
+            height: calc(100% - 30px);
+            background: #000;
+            border: 1px solid #333;
+        }
+        
+        .metrics {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border: 1px solid #00ff41;
+            font-size: 12px;
+            min-width: 200px;
+        }
+        
+        .connection-status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 5px 10px;
+            border: 1px solid;
+            font-size: 12px;
+        }
+        
+        .connected {
+            border-color: #00ff41;
+            color: #00ff41;
+        }
+        
+        .disconnected {
+            border-color: #ff4444;
+            color: #ff4444;
+        }
+        
+        .spike-indicator {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 20px;
+            height: 20px;
+            background: #00ff41;
+            border-radius: 50%;
+            opacity: 0;
+            animation: spike 0.1s ease-out;
+        }
+        
+        @keyframes spike {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(2); }
+        }
+        
+        .brain-region {
+            position: absolute;
+            border-radius: 50%;
+            border: 2px solid #00ff41;
+            color: #00ff41;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .brain-region.active {
+            background: rgba(0, 255, 65, 0.3);
+            box-shadow: 0 0 20px #00ff41;
+        }
+        
+        .synaptic-connection {
+            position: absolute;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ff41, transparent);
+            opacity: 0.5;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.2; }
+            50% { opacity: 0.8; }
+        }
+        
+        .packet-trace {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            animation: packet-flow 1s linear;
+        }
+        
+        @keyframes packet-flow {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-status" id="status">Connecting...</div>
+    
+    <div class="metrics" id="metrics">
+        <div>Packets/sec: <span id="pps">0</span></div>
+        <div>Avg Latency: <span id="latency">0</span>ms</div>
+        <div>Gamma Coherence: <span id="gamma">0</span>%</div>
+        <div>Active Synapses: <span id="synapses">0</span></div>
+        <div>Attention: <span id="attention">None</span></div>
+    </div>
+    
+    <div class="container">
+        <!-- Oscilloscope Panel -->
+        <div class="panel">
+            <h2>🌊 Neural Oscillations</h2>
+            <canvas id="oscilloscope"></canvas>
+        </div>
+        
+        <!-- Brain Activity Panel -->
+        <div class="panel">
+            <h2>🧠 Brain Regions</h2>
+            <canvas id="brain"></canvas>
+            <div id="brainRegions"></div>
+        </div>
+        
+        <!-- Packet Flow Panel -->
+        <div class="panel">
+            <h2>📦 Packet Flow</h2>
+            <canvas id="packets"></canvas>
+        </div>
+        
+        <!-- Network Graph Panel -->
+        <div class="panel">
+            <h2>🕸️ Synaptic Network</h2>
+            <canvas id="network"></canvas>
+        </div>
+    </div>
+    
+    <div class="spike-indicator" id="spikeIndicator"></div>
+
+    <script>
+        class NeuralVisualizer {
+            constructor() {
+                this.ws = null;
+                this.canvases = {
+                    oscilloscope: document.getElementById('oscilloscope').getContext('2d'),
+                    brain: document.getElementById('brain').getContext('2d'),
+                    packets: document.getElementById('packets').getContext('2d'),
+                    network: document.getElementById('network').getContext('2d')
+                };
+                
+                this.data = {
+                    oscillations: new Map(),
+                    brainActivity: new Map(),
+                    packets: [],
+                    synapses: new Map(),
+                    metrics: {}
+                };
+                
+                this.connect();
+                this.setupCanvases();
+                this.startAnimation();
+            }
+            
+            connect() {
+                const status = document.getElementById('status');
+                
+                try {
+                    this.ws = new WebSocket('ws://localhost:8888');
+                    
+                    this.ws.onopen = () => {
+                        status.textContent = 'Connected';
+                        status.className = 'connection-status connected';
+                        console.log('Connected to Neural Observatory');
+                    };
+                    
+                    this.ws.onclose = () => {
+                        status.textContent = 'Disconnected';
+                        status.className = 'connection-status disconnected';
+                        setTimeout(() => this.connect(), 2000);
+                    };
+                    
+                    this.ws.onmessage = (event) => {
+                        const packet = JSON.parse(event.data);
+                        this.handleTelemetry(packet);
+                    };
+                    
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                    };
+                    
+                } catch (error) {
+                    console.error('Connection failed:', error);
+                    status.textContent = 'Failed';
+                    status.className = 'connection-status disconnected';
+                }
+            }
+            
+            handleTelemetry(packet) {
+                switch (packet.type) {
+                    case 'spike':
+                        this.showSpikeIndicator();
+                        break;
+                        
+                    case 'oscillation':
+                        this.updateOscillation(packet.data);
+                        break;
+                        
+                    case 'brain_activity':
+                        this.updateBrainActivity(packet.data);
+                        break;
+                        
+                    case 'packet_sent':
+                    case 'packet_received':
+                        this.addPacketTrace(packet.data);
+                        break;
+                        
+                    case 'metrics':
+                        this.updateMetrics(packet.data);
+                        break;
+                        
+                    case 'synapse_strengthened':
+                    case 'synapse_weakened':
+                        this.updateSynapse(packet.data);
+                        break;
+                }
+                
+                // Send screenshot to stderr for AI observation
+                if (Math.random() < 0.1) { // 10% sampling rate
+                    this.captureScreenshot();
+                }
+            }
+            
+            showSpikeIndicator() {
+                const indicator = document.getElementById('spikeIndicator');
+                indicator.style.animation = 'none';
+                indicator.offsetHeight; // Trigger reflow
+                indicator.style.animation = 'spike 0.1s ease-out';
+            }
+            
+            updateOscillation(data) {
+                this.data.oscillations.set(data.band, data);
+            }
+            
+            updateBrainActivity(data) {
+                this.data.brainActivity = data.regions;
+            }
+            
+            addPacketTrace(data) {
+                this.data.packets.push({
+                    ...data,
+                    timestamp: Date.now(),
+                    x: Math.random() * 400,
+                    y: Math.random() * 300
+                });
+                
+                // Keep only recent packets
+                const cutoff = Date.now() - 5000;
+                this.data.packets = this.data.packets.filter(p => p.timestamp > cutoff);
+            }
+            
+            updateMetrics(data) {
+                this.data.metrics = data;
+                document.getElementById('pps').textContent = Math.round(data.packetsPerSecond);
+                document.getElementById('latency').textContent = Math.round(data.averageLatency);
+                document.getElementById('gamma').textContent = Math.round(data.gammaCoherence * 100);
+                document.getElementById('synapses').textContent = data.totalSynapses;
+                document.getElementById('attention').textContent = data.attentionFocus;
+            }
+            
+            updateSynapse(data) {
+                this.data.synapses.set(data.path, data);
+            }
+            
+            setupCanvases() {
+                Object.keys(this.canvases).forEach(key => {
+                    const canvas = document.getElementById(key);
+                    const rect = canvas.getBoundingClientRect();
+                    canvas.width = rect.width;
+                    canvas.height = rect.height;
+                });
+            }
+            
+            startAnimation() {
+                const animate = () => {
+                    this.drawOscilloscope();
+                    this.drawBrainActivity();
+                    this.drawPacketFlow();
+                    this.drawNetwork();
+                    requestAnimationFrame(animate);
+                };
+                animate();
+            }
+            
+            drawOscilloscope() {
+                const ctx = this.canvases.oscilloscope;
+                const canvas = ctx.canvas;
+                
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw oscillation bands
+                const bands = ['gamma', 'beta', 'alpha', 'theta'];
+                const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4'];
+                
+                bands.forEach((band, index) => {
+                    const oscillation = this.data.oscillations.get(band);
+                    if (!oscillation || !oscillation.samples) return;
+                    
+                    const y = (index + 1) * (canvas.height / (bands.length + 1));
+                    const samples = oscillation.samples;
+                    
+                    ctx.strokeStyle = colors[index];
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    
+                    samples.forEach((sample, i) => {
+                        const x = (i / samples.length) * canvas.width;
+                        const amplitude = sample * 50; // Scale amplitude
+                        
+                        if (i === 0) {
+                            ctx.moveTo(x, y + amplitude);
+                        } else {
+                            ctx.lineTo(x, y + amplitude);
+                        }
+                    });
+                    
+                    ctx.stroke();
+                    
+                    // Label
+                    ctx.fillStyle = colors[index];
+                    ctx.font = '12px Courier New';
+                    ctx.fillText(`${band.toUpperCase()} ${oscillation.frequency.toFixed(1)}Hz`, 10, y - 10);
+                });
+            }
+            
+            drawBrainActivity() {
+                const ctx = this.canvases.brain;
+                const canvas = ctx.canvas;
+                
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Brain regions layout (simplified)
+                const regions = [
+                    { name: 'Visual', x: 0.2, y: 0.7, as: 65001 },
+                    { name: 'Auditory', x: 0.7, y: 0.6, as: 65002 },
+                    { name: 'Wernicke', x: 0.8, y: 0.4, as: 65010 },
+                    { name: 'Broca', x: 0.3, y: 0.3, as: 65011 },
+                    { name: 'Hippocampus', x: 0.5, y: 0.8, as: 65020 },
+                    { name: 'Prefrontal', x: 0.5, y: 0.2, as: 65030 },
+                    { name: 'Thalamus', x: 0.5, y: 0.5, as: 65100 }
+                ];
+                
+                regions.forEach(region => {
+                    const activity = this.data.brainActivity.get(region.as) || 0;
+                    const x = region.x * canvas.width;
+                    const y = region.y * canvas.height;
+                    const radius = 20 + activity * 30;
+                    
+                    // Glow effect
+                    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+                    gradient.addColorStop(0, `rgba(0, 255, 65, ${activity})`);
+                    gradient.addColorStop(1, 'rgba(0, 255, 65, 0)');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(x, y, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Region circle
+                    ctx.strokeStyle = activity > 0.3 ? '#00ff41' : '#666';
+                    ctx.lineWidth = activity > 0.3 ? 3 : 1;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 15, 0, Math.PI * 2);
+                    ctx.stroke();
+                    
+                    // Label
+                    ctx.fillStyle = '#00ff41';
+                    ctx.font = '10px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(region.name, x, y - 25);
+                    ctx.fillText(`${Math.round(activity * 100)}%`, x, y + 5);
+                });
+            }
+            
+            drawPacketFlow() {
+                const ctx = this.canvases.packets;
+                const canvas = ctx.canvas;
+                
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const now = Date.now();
+                
+                this.data.packets.forEach(packet => {
+                    const age = now - packet.timestamp;
+                    const opacity = Math.max(0, 1 - age / 5000);
+                    
+                    if (opacity <= 0) return;
+                    
+                    // Color by QoS class
+                    const colors = {
+                        46: '#ff0000', // Conscious thought - red
+                        34: '#ff6600', // Attention - orange
+                        26: '#ffff00', // Working memory - yellow
+                        18: '#00ff00', // Background - green
+                        10: '#0066ff', // Subconscious - blue
+                        0: '#666666'   // Default - gray
+                    };
+                    
+                    const color = colors[packet.qos?.dscp] || '#666666';
+                    
+                    ctx.fillStyle = color;
+                    ctx.globalAlpha = opacity;
+                    ctx.beginPath();
+                    ctx.arc(packet.x, packet.y, 3 + packet.amplitude * 5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                    
+                    // Packet trail
+                    for (let i = 1; i <= 5; i++) {
+                        const trailOpacity = opacity * (1 - i / 5);
+                        if (trailOpacity <= 0) break;
+                        
+                        ctx.fillStyle = color;
+                        ctx.globalAlpha = trailOpacity;
+                        ctx.beginPath();
+                        ctx.arc(packet.x - i * 2, packet.y, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+                });
+            }
+            
+            drawNetwork() {
+                const ctx = this.canvases.network;
+                const canvas = ctx.canvas;
+                
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw synaptic connections
+                this.data.synapses.forEach((synapse, path) => {
+                    const parts = path.split('->');
+                    if (parts.length !== 2) return;
+                    
+                    // Simple layout - would be more sophisticated in real implementation
+                    const x1 = Math.random() * canvas.width;
+                    const y1 = Math.random() * canvas.height;
+                    const x2 = Math.random() * canvas.width;
+                    const y2 = Math.random() * canvas.height;
+                    
+                    ctx.strokeStyle = `rgba(0, 255, 65, ${synapse.newWeight})`;
+                    ctx.lineWidth = synapse.newWeight * 3;
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.stroke();
+                });
+            }
+            
+            captureScreenshot() {
+                // Create a canvas combining all panels
+                const screenshotCanvas = document.createElement('canvas');
+                screenshotCanvas.width = window.innerWidth;
+                screenshotCanvas.height = window.innerHeight;
+                const ctx = screenshotCanvas.getContext('2d');
+                
+                // Fill with black background
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(0, 0, screenshotCanvas.width, screenshotCanvas.height);
+                
+                // Draw each panel
+                const panels = ['oscilloscope', 'brain', 'packets', 'network'];
+                panels.forEach((panel, index) => {
+                    const canvas = document.getElementById(panel);
+                    const x = (index % 2) * (screenshotCanvas.width / 2);
+                    const y = Math.floor(index / 2) * (screenshotCanvas.height / 2);
+                    ctx.drawImage(canvas, x, y, screenshotCanvas.width / 2, screenshotCanvas.height / 2);
+                });
+                
+                // Add timestamp
+                ctx.fillStyle = '#00ff41';
+                ctx.font = '16px Courier New';
+                ctx.fillText(`Neural Observatory - ${new Date().toISOString()}`, 10, 30);
+                
+                // Convert to base64 JPEG and send to stderr
+                screenshotCanvas.toBlob((blob) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const base64 = reader.result.split(',')[1];
+                        // This would normally go to stderr, but in browser we'll console.error
+                        console.error(`NEURAL_SCREENSHOT:${base64}`);
+                    };
+                    reader.readAsDataURL(blob);
+                }, 'image/jpeg', 0.7);
+            }
+        }
+        
+        // Start the visualizer
+        window.addEventListener('load', () => {
+            new NeuralVisualizer();
+        });
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            location.reload(); // Simple approach for demo
+        });
+    </script>
+</body>
+</html>
