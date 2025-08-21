@@ -64,8 +64,11 @@ export class PacketStreamingService extends EventEmitter {
 
   constructor(config: StreamingConfig = {}) {
     super();
+    const defaultWsBase = typeof window !== 'undefined'
+      ? (window.location.origin.replace(/^http/, 'ws') + '/packet')
+      : 'ws://localhost:8788';
     this.config = {
-      serverUrl: 'ws://localhost:8788',
+      serverUrl: defaultWsBase,
       model: 'gemma3-csm-3',
       temperature: 0.8,
       maxTokens: 2048,

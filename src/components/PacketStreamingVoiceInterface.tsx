@@ -61,7 +61,7 @@ export const PacketStreamingVoiceInterface: React.FC<PacketStreamingVoiceInterfa
     try {
       // Try to initialize packet streaming
       packetService.current = await createStreamingService({
-        serverUrl: 'ws://localhost:8787',
+        // Use default serverUrl from PacketStreamingService (via /packet proxy)
         model: 'gemma3-csm-3',
         temperature: 0.8,
         maxTokens: 2048

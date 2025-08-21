@@ -22,6 +22,14 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // WebSocket proxy to Packet WebSocket server
+      '/packet': {
+        target: process.env.VITE_PACKET_WS_TARGET || 'http://localhost:8788',
+        changeOrigin: true,
+        ws: true,
+        // optional rewrite to strip prefix if server expects root
+        rewrite: (path) => path.replace(/^\/packet/, ''),
+      },
     },
   },
 })
