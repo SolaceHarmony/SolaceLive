@@ -536,5 +536,45 @@ export const PacketStreamingVoiceInterface: React.FC<PacketStreamingVoiceInterfa
       }
       setAudioState(prev => ({ ...prev, isRecording: false, audioLevel: 0 }));
       setVoiceActivityLevel(0);
-      if
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      setAudioState(prev => ({ 
+        ...prev, 
+        isRecording: false, 
+        error: `Failed to stop recording: ${error}` 
+      }));
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopRecording();
+    };
+  }, []);
+
+  return (
+      <div className="voice-interface">
+        <button 
+          onClick={toggleRecording}
+          disabled={audioState.isProcessing}
+        >
+          {audioState.isRecording ? 'Stop Recording' : 'Start Recording'}
+        </button>
+        
+        {audioState.error && (
+          <div className="error-message">{audioState.error}</div>
+        )}
+        
+        {audioState.isRecording && (
+          <div className="recording-status">
+            <div>Voice Activity: {voiceActivityLevel.toFixed(2)}</div>
+            <div>Audio Level: {audioState.audioLevel.toFixed(2)}</div>
+          </div>
+        )}
+      </div>
+    );
+};
+
+export default PacketStreamingVoiceInterface;
 

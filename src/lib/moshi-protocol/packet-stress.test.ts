@@ -483,8 +483,8 @@ describe('DualStreamProcessor - Stress Tests', () => {
     processor.dispose();
   });
 
-  // Helper method for mixed packet test
-  private createPayloadForType(type: PacketType): any {
+  // Helper function for mixed packet test
+  function createPayloadForType(type: PacketType): any {
     switch (type) {
       case PacketType.AUDIO_PCM:
         return {

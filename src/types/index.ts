@@ -11,6 +11,7 @@ export interface AudioState {
   isSpeaking: boolean;
   isProcessing: boolean;
   audioLevel: number;
+  error?: string;
 }
 
 export interface AppConfig {
