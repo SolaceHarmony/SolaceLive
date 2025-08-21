@@ -375,17 +375,17 @@ export interface NeuralBanditStatistics {
   updateArm(route: string, reward: number, latency: number): void {
     const stats: ArmStats = this.arms.get(route) || new ArmStats();
     
-    // Speed-based reward (inverse latency)    
-    const speedReward = Math.min(1, 100 / latency); // Cap at 1 for very fast
-    const finalReward = (reward + speedReward) / 2;
+    // Speed-based reward (inverse latency)
+    const speedReward: number = Math.min(1, 100 / latency); // Cap at 1 for very fast
+    const finalReward: number = (reward + speedReward) / 2;
     
     // Update running average with decay for old observations
     stats.pulls++;
     if (stats.pulls === 1) {
       stats.meanReward = finalReward;
       stats.variance = 0;
-    } else {
-      const delta = finalReward - stats.meanReward;
+    } else { // Explicit type for delta
+      const delta: number = finalReward - stats.meanReward;
       stats.meanReward += delta / stats.pulls;
       stats.variance = stats.variance * this.DECAY_RATE + delta * delta * (1 - this.DECAY_RATE);
     }
