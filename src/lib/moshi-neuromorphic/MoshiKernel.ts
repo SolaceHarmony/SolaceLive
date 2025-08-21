@@ -13,7 +13,7 @@ export class MoshiKernel {
   /**
    * Convert Moshi tokens to NeuralPackets
    */
-  private tokenToPacket(token: any, streamId: string): NeuralPacket {
+  private tokenToPacket(token: { value?: string; probability?: number; logits?: number[]; attentionWeights?: number[] }, streamId: string): NeuralPacket {
     return {
       id: crypto.randomUUID(),
       type: PacketType.INFERENCE,
