@@ -104,7 +104,7 @@ export class ConsciousnessOrchestrator {
     
     // 2. Apply attention mechanism to select focus
     const interference = this.attention.calculateInterference(allPackets);
-    const focusedPackets = this.attention.selectFocus(allPackets, interference);
+    const focusedPackets = this.attention.focus(allPackets);
     
     // 3. Update attention state if focus changed
     const newFocus = this.determineFocus(focusedPackets);
@@ -130,9 +130,9 @@ export class ConsciousnessOrchestrator {
       this.updateWorkingMemory(winner.sourceAS.id, boundPackets);
       
       // 7. Apply Hebbian learning to strengthen successful paths
-      const pathStrength = await this.hebbian.strengthen(winner);
+ this.hebbian.updateWeights(winner, []); // Use updateWeights with winner and empty losers array
       this.metrics.hebbianUpdates++;
-      
+ // Note: A more complete implementation would get losers from ThoughtRacer
       // 8. Update consciousness state based on processing
       this.updateConsciousnessState(winner, pathStrength);
     }
