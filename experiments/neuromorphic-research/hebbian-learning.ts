@@ -19,6 +19,17 @@ import {
 // COMPETITIVE HEBBIAN LEARNING
 // ============================================================================
 
+export interface CompetitiveHebbianStatistics {
+  totalSynapses: number;
+  averageStrength: number;
+  strongestPath: string;
+  weakestPath: string;
+  maxStrength: number;
+  minStrength: number;
+  qosDistribution: Map<DSCP, number>;
+}
+
+
 export class CompetitiveHebbian {
   private synapses: Map<string, SynapticWeight> = new Map();
   private spikeHistory: Map<string, bigint[]> = new Map();
@@ -30,8 +41,8 @@ export class CompetitiveHebbian {
    * Update weights based on spike timing - "Cells that fire first, wire first"
    */
   updateWeights(winner: NeuralPacket, losers: NeuralPacket[]): void {
-    const winPath = this.getPathKey(winner);
-    const winTime = winner.timestamp;
+    const winPath: string = this.getPathKey(winner);
+    const winTime: bigint = winner.timestamp;
     
     // Record spike time
     this.recordSpike(winPath, winTime);
@@ -44,7 +55,7 @@ export class CompetitiveHebbian {
     
     // Lateral inhibition - losers get depressed
     losers.forEach(loser => {
-      const lossPath = this.getPathKey(loser);
+      const lossPath: string = this.getPathKey(loser);
       this.recordSpike(lossPath, loser.timestamp);
       this.depress(lossPath, loser);
     });
@@ -93,10 +104,10 @@ export class CompetitiveHebbian {
    * Long-term potentiation for winning paths
    */
   private potentiate(path: string, packet: NeuralPacket): void {
-    const weight = this.synapses.get(path) || new SynapticWeight();
+    const weight: SynapticWeight = this.synapses.get(path) || new SynapticWeight();
     
     // Strengthen based on packet amplitude (signal strength)
-    const strengthBonus = this.LTP_RATE * packet.amplitude;
+    const strengthBonus: number = this.LTP_RATE * packet.amplitude;
     weight.strength = Math.min(10, weight.strength * (1 + strengthBonus));
     
     // Speed bonus - faster packets strengthen more
@@ -125,7 +136,7 @@ export class CompetitiveHebbian {
    * Long-term depression for losing paths
    */
   private depress(path: string, packet: NeuralPacket): void {
-    const weight = this.synapses.get(path) || new SynapticWeight();
+    const weight: SynapticWeight = this.synapses.get(path) || new SynapticWeight();
     
     // Homeostatic depression
     weight.strength *= (1 - this.LTD_RATE);
@@ -153,9 +164,9 @@ export class CompetitiveHebbian {
    */
   private normalizeWeights(): void {
     // Calculate total synaptic weight
-    let totalWeight = 0;
-    this.synapses.forEach(weight => {
-      totalWeight += weight.strength;
+    let totalWeight: number = 0;
+ this.synapses.forEach((weight: SynapticWeight) => {
+ totalWeight += weight.strength;
     });
     
     if (totalWeight === 0) return;
@@ -166,7 +177,7 @@ export class CompetitiveHebbian {
     
     // Only normalize if weights are getting too extreme
     if (scaleFactor < 0.5 || scaleFactor > 2.0) {
-      this.synapses.forEach(weight => {
+ this.synapses.forEach((weight: SynapticWeight) => {
         weight.strength *= scaleFactor;
       });
     }
@@ -176,11 +187,11 @@ export class CompetitiveHebbian {
    * Record spike time for STDP
    */
   private recordSpike(path: string, time: bigint): void {
-    const history = this.spikeHistory.get(path) || [];
+    const history: bigint[] = this.spikeHistory.get(path) || [];
     history.push(time);
     
     // Keep only recent spikes (within STDP window)
-    const cutoff = time - BigInt(this.STDP_WINDOW * 2 * 1000000);
+    const cutoff: bigint = time - BigInt(this.STDP_WINDOW * 2 * 1000000);
     const recentSpikes = history.filter(t => t > cutoff);
     
     this.spikeHistory.set(path, recentSpikes);
@@ -190,8 +201,8 @@ export class CompetitiveHebbian {
    * Get synaptic weight for a path
    */
   getWeight(from: string, to: string): number {
-    const key = `${from}->${to}`;
-    const weight = this.synapses.get(key);
+    const key: string = `${from}->${to}`;
+    const weight: SynapticWeight | undefined = this.synapses.get(key);
     return weight ? weight.strength : 1.0;
   }
   
@@ -201,8 +212,8 @@ export class CompetitiveHebbian {
   pruneSynapses(maxAge: bigint = BigInt(60000000000)): number {
     // 60 seconds in microseconds
     const now = BigInt(Date.now() * 1000);
-    let pruned = 0;
-    
+    let pruned: number = 0;
+
     this.synapses.forEach((weight, key) => {
       const age = now - weight.lastUsed;
       
@@ -224,7 +235,7 @@ export class CompetitiveHebbian {
   }
   
   private upgradeQoS(current: DSCP): DSCP {
-    const progression = [
+    const progression: DSCP[] = [
       DSCP.DEFAULT,
       DSCP.SUBCONSCIOUS,
       DSCP.BACKGROUND_PROCESS,
@@ -233,13 +244,13 @@ export class CompetitiveHebbian {
       DSCP.CONSCIOUS_THOUGHT
     ];
     
-    const idx = progression.indexOf(current);
+    const idx: number = progression.indexOf(current);
     return progression[Math.min(idx + 1, progression.length - 1)];
   }
   
   private downgradeQoS(current: DSCP): DSCP {
-    const progression = [
-      DSCP.DEFAULT,
+    const progression: DSCP[] = [
+      DSCP.DEFAULT, // Explicit type
       DSCP.SUBCONSCIOUS,
       DSCP.BACKGROUND_PROCESS,
       DSCP.WORKING_MEMORY,
@@ -247,14 +258,14 @@ export class CompetitiveHebbian {
       DSCP.CONSCIOUS_THOUGHT
     ];
     
-    const idx = progression.indexOf(current);
+    const idx: number = progression.indexOf(current); // Explicit type
     return progression[Math.max(idx - 1, 0)];
   }
   
   getStatistics(): any {
-    const stats = {
+  getStatistics(): CompetitiveHebbianStatistics {
+    const stats: CompetitiveHebbianStatistics = {
       totalSynapses: this.synapses.size,
-      averageStrength: 0,
       strongestPath: '',
       weakestPath: '',
       maxStrength: 0,
@@ -263,11 +274,11 @@ export class CompetitiveHebbian {
     };
     
     let totalStrength = 0;
-    
-    this.synapses.forEach((weight, path) => {
+
+    this.synapses.forEach((weight: SynapticWeight, path: string) => {
       totalStrength += weight.strength;
       
-      if (weight.strength > stats.maxStrength) {
+      if (weight.strength > stats.maxStrength && isFinite(weight.strength)) {
         stats.maxStrength = weight.strength;
         stats.strongestPath = path;
       }
@@ -277,7 +288,7 @@ export class CompetitiveHebbian {
         stats.weakestPath = path;
       }
       
-      const count = stats.qosDistribution.get(weight.qosClass) || 0;
+      const count: number = stats.qosDistribution.get(weight.qosClass) || 0;
       stats.qosDistribution.set(weight.qosClass, count + 1);
     });
     
@@ -287,11 +298,18 @@ export class CompetitiveHebbian {
   }
 }
 
+/**
+ * Statistics for the NeuralBandit
+ */
+export interface NeuralBanditStatistics {
+  totalArms: number;
+  totalPulls: number;
+  exploration: number;
+  armStats: Map<string, { pulls: number, meanReward: number, variance: number, qosMultiplier: number, confidence: number }>;
+}
+
 // ============================================================================
 // NEURAL MULTI-ARMED BANDIT
-// ============================================================================
-
-export class NeuralBandit {
   private arms: Map<string, ArmStats> = new Map();
   private totalPulls: number = 0;
   private exploration: number = 0.1; // Epsilon for exploration
@@ -316,8 +334,8 @@ export class NeuralBandit {
     }
     
     // Exploit: choose best route based on UCB1 with QoS weighting
-    let bestRoute = availableRoutes[0];
-    let bestScore = -Infinity;
+    let bestRoute: string = availableRoutes[0];
+    let bestScore: number = -Infinity;
     
     availableRoutes.forEach(route => {
       const score = this.calculateUCB(route, packet);
@@ -334,15 +352,15 @@ export class NeuralBandit {
    * Calculate Upper Confidence Bound with QoS weighting
    */
   private calculateUCB(route: string, packet: NeuralPacket): number {
-    const stats = this.arms.get(route) || new ArmStats();
+    const stats: ArmStats = this.arms.get(route) || new ArmStats();
     
     if (stats.pulls === 0) {
       return Infinity; // Unexplored routes have infinite potential
     }
     
     // Base UCB1 formula
-    const exploitation = stats.meanReward;
-    const exploration = Math.sqrt(2 * Math.log(this.totalPulls + 1) / stats.pulls);
+    const exploitation: number = stats.meanReward;
+    const exploration: number = Math.sqrt(2 * Math.log(this.totalPulls + 1) / stats.pulls);
     
     // QoS weighting based on packet priority
     const qosWeight = (packet.qos.dscp + 1) / 50; // Normalize DSCP to 0-1
@@ -355,9 +373,9 @@ export class NeuralBandit {
    * Update arm statistics after observing reward
    */
   updateArm(route: string, reward: number, latency: number): void {
-    const stats = this.arms.get(route) || new ArmStats();
+    const stats: ArmStats = this.arms.get(route) || new ArmStats();
     
-    // Speed-based reward (inverse latency)
+    // Speed-based reward (inverse latency)    
     const speedReward = Math.min(1, 100 / latency); // Cap at 1 for very fast
     const finalReward = (reward + speedReward) / 2;
     
@@ -393,13 +411,12 @@ export class NeuralBandit {
    * Get performance percentile for a reward value
    */
   getPercentile(percentile: number): number {
-    const rewards: number[] = [];
-    this.arms.forEach(stats => {
+    const rewards: number[] = []; // Explicit type
+    this.arms.forEach((stats: ArmStats) => { // Explicit type
       if (stats.pulls > 0) {
         rewards.push(stats.meanReward);
       }
     });
-    
     if (rewards.length === 0) return 0;
     
     rewards.sort((a, b) => a - b);
@@ -411,9 +428,9 @@ export class NeuralBandit {
    * Reset poorly performing arms
    */
   resetPoorPerformers(threshold: number = 0.1): number {
-    let reset = 0;
-    const cutoff = this.getPercentile(threshold);
-    
+    let reset: number = 0;
+    const cutoff: number = this.getPercentile(threshold);
+
     this.arms.forEach((stats, route) => {
       if (stats.meanReward < cutoff && stats.pulls > 10) {
         // Give poor performers another chance
@@ -427,12 +444,12 @@ export class NeuralBandit {
     return reset;
   }
   
-  getStatistics(): any {
-    const stats = {
+  getStatistics(): NeuralBanditStatistics {
+    const stats: NeuralBanditStatistics = {
       totalArms: this.arms.size,
       totalPulls: this.totalPulls,
       exploration: this.exploration,
-      armStats: new Map<string, any>()
+      armStats: new Map<string, { pulls: number, meanReward: number, variance: number, qosMultiplier: number, confidence: number }>()
     };
     
     this.arms.forEach((armStats, route) => {
@@ -469,8 +486,8 @@ export class MicroExpertGate {
    * Determine if gate should activate (ion channel opens)
    */
   shouldActivate(packet: NeuralPacket): boolean {
-    const now = packet.timestamp;
-    const timeSinceLastSpike = Number(now - this.lastSpike) / 1000000; // ms
+    const now: bigint = packet.timestamp;
+    const timeSinceLastSpike: number = Number(now - this.lastSpike) / 1000000; // ms
     
     // Check refractory period
     if (timeSinceLastSpike < this.config.refractory) {
@@ -478,13 +495,13 @@ export class MicroExpertGate {
     }
     
     // Voltage-gated: amplitude must exceed threshold
-    const effectiveThreshold = this.config.threshold * (1 + this.adaptationLevel);
+    const effectiveThreshold: number = this.config.threshold * (1 + this.adaptationLevel);
     if (packet.amplitude < effectiveThreshold) {
       return false;
     }
     
     // Frequency selectivity (like ion channel selectivity)
-    const resonance = this.calculateResonance(packet.frequency);
+    const resonance: number = this.calculateResonance(packet.frequency);
     if (resonance < 0.5) {
       return false; // Wrong frequency
     }
@@ -511,8 +528,8 @@ export class MicroExpertGate {
    * Calculate resonance with preferred frequency
    */
   private calculateResonance(frequency: number): number {
-    const diff = Math.abs(frequency - this.config.resonantFreq);
-    const bandwidth = this.config.resonantFreq * 0.2; // 20% bandwidth
+    const diff: number = Math.abs(frequency - this.config.resonantFreq);
+    const bandwidth: number = this.config.resonantFreq * 0.2; // 20% bandwidth
     
     if (diff < bandwidth) {
       return 1 - (diff / bandwidth);
@@ -524,6 +541,7 @@ export class MicroExpertGate {
   /**
    * Check for coincidence detection (NMDA-like)
    */
+
   private checkCoincidence(packet: NeuralPacket): boolean {
     // NMDA requires both presynaptic (high frequency) and postsynaptic (amplitude) activity
     return packet.frequency > 20 && packet.amplitude > 0.7;
@@ -532,14 +550,14 @@ export class MicroExpertGate {
   /**
    * Reset adaptation (like removing calcium)
    */
-  resetAdaptation(): void {
+ private resetAdaptation(): void {
     this.adaptationLevel = Math.max(0, this.adaptationLevel - 0.1);
   }
   
   /**
    * Get gate conductance (how much signal passes through)
    */
-  getConductance(): number {
+  getConductance(): number { // Return type already explicitly defined as number
     if (!this.isOpen) return 0;
     
     // Conductance depends on ion channel type
@@ -565,10 +583,10 @@ export class MicroExpertGate {
    * Close gate after some time
    */
   update(currentTime: bigint): void {
-    const timeSinceSpike = Number(currentTime - this.lastSpike) / 1000000;
+    const timeSinceSpike: number = Number(currentTime - this.lastSpike) / 1000000;
     
     // Different channels have different kinetics
-    let closingTime = 5; // ms default
+    let closingTime: number = 5; // ms default
     
     switch (this.config.ionChannel) {
       case IonChannel.SODIUM:

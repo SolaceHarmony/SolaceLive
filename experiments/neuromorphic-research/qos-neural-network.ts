@@ -23,24 +23,49 @@ import {
 // THOUGHT RACER - Competitive Neural Selection
 // ============================================================================
 
+/**
+ * Represents a participant in a thought race before completion.
+ */
+interface Racer {
+  thought: NeuralPacket;
+  startTime: number;
+  path: SynapticPath;
+  qos: NeuralQoS;
+  }
+
+/**
+ * Statistics for the ThoughtRacer
+ */
+export interface ThoughtRacerStatistics {
+  totalRaces: number;
+  pathBoosts: { [key: string]: number };
+  averageWinTimes: { [key: string]: number };
+}
+
 export class ThoughtRacer {
-  private races: Map<string, Race> = new Map();
-  private qosBoosts: Map<string, number> = new Map();
-  private winHistory: Map<string, number[]> = new Map();
+  private races: Map<string, Race> = new Map(); // Explicit type
+  private qosBoosts: Map<string, number> = new Map(); // Explicit type
+  private winHistory: Map<string, number[]> = new Map(); // Explicit type
   
   /**
    * Race multiple thoughts - fastest one wins and gets QoS boost
    */
+  async race(thoughts: NeuralPacket[]): Promise<RaceResult> {
   async race(thoughts: NeuralPacket[]): Promise<NeuralPacket> {
-    const raceId = crypto.randomUUID();
     const race = new Race(raceId);
     this.races.set(raceId, race);
     
     // Launch all thoughts simultaneously
-    const racers = thoughts.map(thought => ({
-      thought,
+    const racers: {
+      thought: NeuralPacket;
+      startTime: number;
+      path: SynapticPath;
+      qos: NeuralQoS;
+    }[] = thoughts.map(thought => ({
+ thought: thought,
       startTime: performance.now(),
-      path: this.selectPath(thought),
+      path: this.selectPath(thought), // Assuming selectPath is synchronous or returns SynapticPath
+      // Note: calculateEffectiveQoS should return NeuralQoS as per its signature
       qos: this.calculateEffectiveQoS(thought)
     }));
     
@@ -50,7 +75,7 @@ export class ThoughtRacer {
         // Simulate propagation with QoS-based delay
         const delay = this.calculatePropagationDelay(racer);
         await this.simulateDelay(delay);
-        
+
         const result: RaceResult = {
           thought: racer.thought,
           raceTime: performance.now() - racer.startTime,
@@ -64,7 +89,8 @@ export class ThoughtRacer {
       })
     );
     
-    winner.winner = true;
+    const winner: RaceResult = await Promise.race(...); // Type inferred from Promise.race return
+ winner.winner = true; // The 'winner' variable is already declared above
     race.winner = winner;
     
     // Winner gets QoS boost (Hebbian reinforcement)
@@ -79,14 +105,12 @@ export class ThoughtRacer {
     this.penalizeLosers(losers);
     
     // Update win history for analysis
-    this.updateWinHistory(winner);
-    
     return winner.thought;
   }
   
   private calculateEffectiveQoS(thought: NeuralPacket): NeuralQoS {
-    const pathKey = this.getPathKey(thought);
-    const boost = this.qosBoosts.get(pathKey) || 1.0;
+    const pathKey: string = this.getPathKey(thought);
+    const boost: number = this.qosBoosts.get(pathKey) || 1.0;
     
     return {
       ...thought.qos,
@@ -96,11 +120,11 @@ export class ThoughtRacer {
     };
   }
   
-  private calculatePropagationDelay(racer: any): number {
-    const baseDelay = racer.qos.latency;
-    const jitterNoise = (Math.random() - 0.5) * racer.qos.jitter;
-    const loadDelay = 1000 / racer.qos.bandwidth; // Inverse bandwidth
-    const priorityBonus = (46 - racer.qos.dscp) * 0.5; // Higher DSCP = less delay
+  private calculatePropagationDelay(racer: { thought: NeuralPacket; startTime: number; path: SynapticPath; qos: NeuralQoS }): number {
+    const baseDelay: number = racer.qos.latency;
+    const jitterNoise: number = (Math.random() - 0.5) * racer.qos.jitter;
+    const loadDelay: number = 1000 / racer.qos.bandwidth; // Inverse bandwidth
+    const priorityBonus: number = (46 - racer.qos.dscp) * 0.5; // Higher DSCP = less delay
     
     // Packet loss simulation
     if (Math.random() < racer.qos.loss) {
@@ -118,12 +142,11 @@ export class ThoughtRacer {
   }
   
   private reinforceWinner(winner: RaceResult): void {
-    const pathKey = this.getPathKey(winner.thought);
-    const currentBoost = this.qosBoosts.get(pathKey) || 1.0;
+    const pathKey: string = this.getPathKey(winner.thought);
+    const currentBoost: number = this.qosBoosts.get(pathKey) || 1.0;
     
-    // Adaptive boost based on win margin and speed
-    const speedBonus = 100 / winner.raceTime; // Faster wins = bigger boost
-    const newBoost = currentBoost * (1 + 0.1 * speedBonus);
+    const speedBonus: number = 100 / winner.raceTime;
+    const newBoost: number = currentBoost * (1 + 0.1 * speedBonus);
     
     this.qosBoosts.set(pathKey, Math.min(newBoost, 10)); // Cap at 10x
     
@@ -135,11 +158,11 @@ export class ThoughtRacer {
   
   private penalizeLosers(losers: RaceResult[]): void {
     losers.forEach(loser => {
-      const pathKey = this.getPathKey(loser.thought);
-      const currentBoost = this.qosBoosts.get(pathKey) || 1.0;
-      
+      const pathKey: string = this.getPathKey(loser.thought);
+      const currentBoost: number = this.qosBoosts.get(pathKey) || 1.0; // Explicit type
+
       // Gentle penalty - we still want diversity
-      const newBoost = currentBoost * 0.95;
+      const newBoost: number = currentBoost * 0.95; // Explicit type
       this.qosBoosts.set(pathKey, Math.max(newBoost, 0.1)); // Floor at 0.1x
       
       // Downgrade DSCP if consistent loser
@@ -150,7 +173,7 @@ export class ThoughtRacer {
   }
   
   private upgradeDSCP(current: DSCP): DSCP {
-    const progression = [
+    const progression: DSCP[] = [ // Explicit type
       DSCP.DEFAULT,
       DSCP.SUBCONSCIOUS,
       DSCP.BACKGROUND_PROCESS,
@@ -159,12 +182,12 @@ export class ThoughtRacer {
       DSCP.CONSCIOUS_THOUGHT
     ];
     
-    const currentIndex = progression.indexOf(current);
+    const currentIndex: number = progression.indexOf(current); // Explicit type
     return progression[Math.min(currentIndex + 1, progression.length - 1)];
   }
   
   private downgradeDSCP(current: DSCP): DSCP {
-    const progression = [
+    const progression: DSCP[] = [ // Explicit type
       DSCP.DEFAULT,
       DSCP.SUBCONSCIOUS,
       DSCP.BACKGROUND_PROCESS,
@@ -173,26 +196,26 @@ export class ThoughtRacer {
       DSCP.CONSCIOUS_THOUGHT
     ];
     
-    const currentIndex = progression.indexOf(current);
+    const currentIndex: number = progression.indexOf(current); // Explicit type
     return progression[Math.max(currentIndex - 1, 0)];
   }
   
   private selectPath(thought: NeuralPacket): SynapticPath {
     // Simple path selection - in real implementation would use routing table
-    return {
+    return { // Ensure object literal has correct types
       source: 'input',
       destination: 'output',
       intermediates: this.selectIntermediates(thought),
-      weight: Math.random() * 0.5 + 0.5,
+      weight: (Math.random() * 0.5 + 0.5),
       delay: thought.qos.latency,
-      reliability: 1 - thought.qos.loss
+      reliability: (1 - thought.qos.loss)
     };
   }
-  
+
   private selectIntermediates(thought: NeuralPacket): string[] {
     // Route through cognitive systems based on thought type
-    const intermediates: string[] = [];
-    
+    const intermediates: string[] = []; // Explicit type
+
     // Sensory input always goes through thalamus
     intermediates.push(CognitiveAS.THALAMUS.toString());
     
@@ -218,9 +241,9 @@ export class ThoughtRacer {
     return `${thought.streamId}_${thought.qos.dscp}`;
   }
   
-  private updateWinHistory(winner: RaceResult): void {
-    const pathKey = this.getPathKey(winner.thought);
-    const history = this.winHistory.get(pathKey) || [];
+  private updateWinHistory(winner: RaceResult): void { 
+    const pathKey: string = this.getPathKey(winner.thought); // Explicit type
+    const history: number[] = this.winHistory.get(pathKey) || []; // Explicit type
     history.push(winner.raceTime);
     
     // Keep only last 100 wins
@@ -231,15 +254,15 @@ export class ThoughtRacer {
     this.winHistory.set(pathKey, history);
   }
   
-  getStatistics(): any {
-    const stats: any = {
+  getStatistics(): ThoughtRacerStatistics {
+    const stats: ThoughtRacerStatistics = { // Explicit type
       totalRaces: this.races.size,
       pathBoosts: Object.fromEntries(this.qosBoosts),
       averageWinTimes: {}
     };
     
     this.winHistory.forEach((times, path) => {
-      const avg = times.reduce((a, b) => a + b, 0) / times.length;
+      const avg: number = times.reduce((a: number, b: number) => a + b, 0) / times.length; // Explicit type
       stats.averageWinTimes[path] = avg;
     });
     
@@ -257,15 +280,15 @@ export class GammaOscillator {
   private readonly THETA_FREQ = 6; // Hz - memory rhythm
   
   /**
-   * Generate burst of packets at gamma frequency
+ * Generate burst of packets at gamma frequency
    */
   generateBurst(thought: NeuralPacket, burstSize?: number): NeuralPacket[] {
     const burst: NeuralPacket[] = [];
-    const size = burstSize || Math.ceil(thought.qos.burstiness * 10);
+    const size: number = burstSize || Math.ceil(thought.qos.burstiness * 10);
     
-    for (let i = 0; i < size; i++) {
-      const phaseOffset = (i / size) * 2 * Math.PI;
-      const timeOffset = (i * 1000000) / this.GAMMA_FREQ; // microseconds
+    for (let i: number = 0; i < size; i++) {
+      const phaseOffset: number = (i / size) * 2 * Math.PI;
+      const timeOffset: number = (i * 1000000) / this.GAMMA_FREQ;
       
       burst.push({
         ...thought,
@@ -290,17 +313,17 @@ export class GammaOscillator {
    * Generate theta-nested gamma bursts (memory encoding)
    */
   generateThetaGamma(thought: NeuralPacket, duration: number = 1000): NeuralPacket[] {
-    const packets: NeuralPacket[] = [];
-    const thetaPeriod = 1000 / this.THETA_FREQ; // ms
-    const gammaPeriod = 1000 / this.GAMMA_FREQ; // ms
+    const packets: NeuralPacket[] = []; // Explicit type
+    const thetaPeriod: number = 1000 / this.THETA_FREQ; // ms - Explicit type
+    const gammaPeriod: number = 1000 / this.GAMMA_FREQ; // ms - Explicit type
     
-    let time = 0;
+    let time: number = 0; // Explicit type
     while (time < duration) {
       // Theta phase determines gamma burst strength
-      const thetaPhase = (time / thetaPeriod) * 2 * Math.PI;
-      const gammaStrength = (Math.sin(thetaPhase) + 1) / 2; // 0 to 1
+      const thetaPhase: number = (time / thetaPeriod) * 2 * Math.PI; // Explicit type
+      const gammaStrength: number = (Math.sin(thetaPhase) + 1) / 2; // 0 to 1 - Explicit type
       
-      if (gammaStrength > 0.3) { // Threshold for gamma burst
+      if (gammaStrength > 0.3) { // Threshold for gamma burst\n
         // Generate gamma burst
         const burstSize = Math.floor(gammaStrength * 7); // 0-7 gamma cycles
         const burst = this.generateBurst(thought, burstSize);
@@ -324,23 +347,23 @@ export class GammaOscillator {
    * Detect phase-locked binding between bursts
    */
   detectBinding(bursts: NeuralPacket[][]): boolean {
-    // Flatten all packets
+    // Flatten all packets // Parameter 'bursts' already typed
     const allPackets = bursts.flat();
     
     // Group by timestamp (within gamma period)
-    const timeGroups = new Map<number, NeuralPacket[]>();
+    const timeGroups: Map<number, NeuralPacket[]> = new Map();
     
     allPackets.forEach(packet => {
-      const timeBin = Math.floor(Number(packet.timestamp) / 1000 / this.BURST_WINDOW);
-      const group = timeGroups.get(timeBin) || [];
+      const timeBin: number = Math.floor(Number(packet.timestamp) / 1000 / this.BURST_WINDOW);
+      const group: NeuralPacket[] = timeGroups.get(timeBin) || [];
       group.push(packet);
       timeGroups.set(timeBin, group);
     });
     
     // Check phase coherence in each time bin
-    let coherentBins = 0;
+    let coherentBins: number = 0;
     timeGroups.forEach(group => {
-      const coherence = calculateCoherence(group);
+      const coherence: number = calculateCoherence(group);
       if (coherence > 0.8) coherentBins++;
     });
     
@@ -351,26 +374,28 @@ export class GammaOscillator {
   /**
    * Calculate cross-frequency coupling
    */
-  calculateCrossFrequencyCoupling(packets: NeuralPacket[]): number {
+ calculateCrossFrequencyCoupling(packets: NeuralPacket[]): number { // Parameter 'packets' already typed
     // Group packets by frequency band
-    const bands = {
+    const bands: { theta: NeuralPacket[]; gamma: NeuralPacket[] } = { // Explicit type for bands
       theta: packets.filter(p => isInBand(p.frequency, OscillationBand.THETA)),
       gamma: packets.filter(p => isInBand(p.frequency, OscillationBand.GAMMA))
     };
-    
+
     if (bands.theta.length === 0 || bands.gamma.length === 0) {
       return 0;
     }
     
     // Calculate phase-amplitude coupling
-    let coupling = 0;
+    let coupling: number = 0;
     bands.theta.forEach(thetaPacket => {
       bands.gamma.forEach(gammaPacket => {
         // Gamma amplitude should be high when theta phase is optimal
-        const thetaPhase = thetaPacket.phase;
-        const gammaAmp = gammaPacket.amplitude;
-        const optimalPhase = Math.PI; // Peak of theta
-        const phaseDiff = Math.abs(thetaPhase - optimalPhase);
+        const thetaPacket: NeuralPacket = thetaPacket;
+        const gammaPacket: NeuralPacket = gammaPacket;
+        const thetaPhase: number = thetaPacket.phase;
+        const gammaAmp: number = gammaPacket.amplitude;
+        const optimalPhase: number = Math.PI;
+        const phaseDiff: number = Math.abs(thetaPhase - optimalPhase);
         
         coupling += gammaAmp * Math.cos(phaseDiff);
       });
@@ -379,16 +404,16 @@ export class GammaOscillator {
     return coupling / (bands.theta.length * bands.gamma.length);
   }
   
-  private modulateDSCP(baseDSCP: DSCP, phase: number): DSCP {
+  private modulateDSCP(baseDSCP: DSCP, phase: number): DSCP { // Parameters already typed
     // Boost priority at peak of gamma cycle
-    const boost = Math.sin(phase) > 0.7;
+    const boost: boolean = Math.sin(phase) > 0.7; // Explicit type for boost
     
     if (boost && baseDSCP < DSCP.CONSCIOUS_THOUGHT) {
       // Temporary priority boost during gamma peak
-      const progression = [
+      const progression: DSCP[] = [
         DSCP.DEFAULT,
         DSCP.SUBCONSCIOUS,
-        DSCP.BACKGROUND_PROCESS,
+        DSCP.BACKGROUND_PROCESS, // Corrected indentation
         DSCP.WORKING_MEMORY,
         DSCP.ATTENTION_FOCUS,
         DSCP.CONSCIOUS_THOUGHT
@@ -406,6 +431,16 @@ export class GammaOscillator {
 // ATTENTION MECHANISM - Interference-based focusing
 // ============================================================================
 
+/**
+ * Statistics for the AttentionMechanism
+ */
+export interface AttentionStatistics {
+  averageIntensity: number;
+  averageBinding: number;
+  shifts: number;
+  currentFocus: InterferencePattern | undefined;
+}
+
 export class AttentionMechanism {
   private focusHistory: InterferencePattern[] = [];
   private attentionWindow: number = 200; // ms
@@ -413,32 +448,32 @@ export class AttentionMechanism {
   /**
    * Calculate interference pattern from multiple packets
    */
-  calculateInterference(packets: NeuralPacket[]): InterferencePattern {
-    if (packets.length === 0) {
+  calculateInterference(packets: NeuralPacket[]): InterferencePattern { // Parameter 'packets' already typed
+ if (packets.length === 0) {
       return {
-        intensity: 0,
-        binding: 0,
-        frequency: 0,
+ intensity: 0,
+ binding: 0,
+ frequency: 0,
         phase: 0,
         locations: []
       };
     }
     
     // Calculate superposition of all packet waves
-    let totalIntensity = 0;
-    let sumCos = 0;
-    let sumSin = 0;
-    let dominantFreq = 0;
-    let maxAmp = 0;
-    const activeLocations = new Set<string>();
+    let totalIntensity: number = 0; // Explicit type
+    let sumCos: number = 0;
+    let sumSin: number = 0;
+    let dominantFreq: number = 0;
+    let maxAmp: number = 0;
+    const activeLocations: Set<string> = new Set<string>();
     
-    packets.forEach(packet => {
+ packets.forEach((packet: NeuralPacket) => {
       // Wave superposition
-      const amp = packet.amplitude;
-      const phase = packet.phase;
-      
-      sumCos += amp * Math.cos(phase);
-      sumSin += amp * Math.sin(phase);
+      const amp: number = packet.amplitude; // Explicit type
+      const phase: number = packet.phase; // Explicit type
+
+      sumCos += amp * Math.cos(phase); // Type inferred from assignment
+      sumSin += amp * Math.sin(phase); // Type inferred from assignment
       totalIntensity += amp * amp; // Power
       
       // Track dominant frequency
@@ -454,15 +489,15 @@ export class AttentionMechanism {
     });
     
     // Resultant wave
-    const resultantAmp = Math.sqrt(sumCos * sumCos + sumSin * sumSin);
-    const resultantPhase = Math.atan2(sumSin, sumCos);
+    const resultantAmp: number = Math.sqrt(sumCos * sumCos + sumSin * sumSin);
+    const resultantPhase: number = Math.atan2(sumSin, sumCos);
     
     // Check for gamma-band binding
-    const gammaPackets = packets.filter(p => 
+    const gammaPackets: NeuralPacket[] = packets.filter(p => 
       isInBand(p.frequency, OscillationBand.GAMMA)
     );
-    const bindingStrength = gammaPackets.length > 0 
-      ? calculateCoherence(gammaPackets)
+    const bindingStrength: number = gammaPackets.length > 0 // Explicit type
+ ? calculateCoherence(gammaPackets) // Type inferred from function return
       : 0;
     
     const pattern: InterferencePattern = {
@@ -485,13 +520,13 @@ export class AttentionMechanism {
    * Determine if attention should shift based on interference
    */
   shouldShiftAttention(newPattern: InterferencePattern): boolean {
+ // Parameter 'newPattern' already typed
     if (this.focusHistory.length === 0) return true;
     
-    const currentFocus = this.focusHistory[this.focusHistory.length - 1];
-    
+    const currentFocus: InterferencePattern = this.focusHistory[this.focusHistory.length - 1]; // Explicit type
     // Shift if new pattern is significantly stronger
-    const intensityRatio = newPattern.intensity / (currentFocus.intensity + 0.001);
-    if (intensityRatio > 2.0) return true;
+    const intensityRatio: number = newPattern.intensity / (currentFocus.intensity + 0.001); // Explicit type
+    if (intensityRatio > 2.0) return true; // Condition checks number value
     
     // Shift if binding is much stronger (conscious breakthrough)
     if (newPattern.binding > 0.9 && currentFocus.binding < 0.5) return true;
@@ -499,7 +534,7 @@ export class AttentionMechanism {
     // Shift if different brain regions activated
     const overlap = currentFocus.locations.filter(loc => 
       newPattern.locations.includes(loc)
-    ).length;
+ ).length; // Type inferred from array filter result
     const similarity = overlap / Math.max(
       currentFocus.locations.length,
       newPattern.locations.length,
@@ -518,11 +553,12 @@ export class AttentionMechanism {
     packets: NeuralPacket[],
     focus: InterferencePattern
   ): NeuralPacket[] {
+ // Parameters 'packets' and 'focus' already typed
     return packets.map(packet => {
-      // Calculate attention weight based on alignment with focus
-      const phaseAlignment = Math.cos(packet.phase - focus.phase);
-      const freqAlignment = 1 / (1 + Math.abs(packet.frequency - focus.frequency));
-      const attentionGain = (phaseAlignment + 1) * freqAlignment;
+      // Calculate attention weight based on alignment with focus      const phaseAlignment: number = Math.cos(packet.phase - focus.phase); // Explicit type      const freqAlignment: number = 1 / (1 + Math.abs(packet.frequency - focus.frequency)); // Explicit type      const attentionGain: number = (phaseAlignment + 1) * freqAlignment; // Explicit type
+      const phaseAlignment: number = Math.cos(packet.phase - focus.phase);
+      const freqAlignment: number = 1 / (1 + Math.abs(packet.frequency - focus.frequency));
+      const attentionGain: number = (phaseAlignment + 1) * freqAlignment; // Explicit type
       
       return {
         ...packet,
@@ -536,21 +572,21 @@ export class AttentionMechanism {
     });
   }
   
-  getAttentionStatistics(): any {
+  getAttentionStatistics(): AttentionStatistics {
+ // Return type already defined
     if (this.focusHistory.length === 0) {
-      return { averageIntensity: 0, averageBinding: 0, shifts: 0 };
+      return { averageIntensity: 0, averageBinding: 0, shifts: 0, currentFocus: undefined };
     }
-    
-    const avgIntensity = this.focusHistory.reduce((sum, p) => sum + p.intensity, 0) 
+    const avgIntensity: number = this.focusHistory.reduce((sum: number, p: InterferencePattern) => sum + p.intensity, 0)
       / this.focusHistory.length;
-    const avgBinding = this.focusHistory.reduce((sum, p) => sum + p.binding, 0)
+    const avgBinding: number = this.focusHistory.reduce((sum: number, p: InterferencePattern) => sum + p.binding, 0)
       / this.focusHistory.length;
     
     // Count attention shifts (large changes in pattern)
     let shifts = 0;
     for (let i = 1; i < this.focusHistory.length; i++) {
-      const prev = this.focusHistory[i - 1];
-      const curr = this.focusHistory[i];
+      const prev: InterferencePattern = this.focusHistory[i - 1]; // Explicit type
+      const curr: InterferencePattern = this.focusHistory[i]; // Explicit type
       if (Math.abs(curr.frequency - prev.frequency) > 10) shifts++;
     }
     

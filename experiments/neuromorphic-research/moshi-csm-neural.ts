@@ -15,7 +15,9 @@ import {
   StreamID
 } from './neural-packet-types';
 
-import { ThoughtRacer, GammaOscillator, AttentionMechanism } from './qos-neural-network';
+import { ThoughtRacer } from './thought-racer';
+import { GammaOscillator } from './gamma-oscillator';
+import { AttentionMechanism } from './attention-mechanism';
 import { CompetitiveHebbian, NeuralBandit } from './hebbian-learning';
 import { NeuralObservatory } from './neural-observatory';
 
@@ -48,6 +50,33 @@ export interface CSMContextPacket extends NeuralPacket {
   };
   topicVector: Float32Array;
   memoryTrace: string[];
+}
+
+// ============================================================================
+// PLACEHOLDER INTERFACES FOR MOSHI COMPONENTS
+// ============================================================================
+
+// Represents the multimodal backbone transformer
+interface MultimodalBackbone {}
+
+// Represents the audio decoder
+interface AudioDecoder {}
+
+// Represents the Mimi codec implementation
+interface MimiCodec {}
+
+// Represents the current attention state
+interface AttentionState {}
+
+/**
+ * Represents the overall neural state for monitoring/visualization
+ */
+interface NeuralState {
+ conversationTurns: number;
+ attentionFocus: AttentionState | null;
+ synapticStrength: number; // Placeholder, would be more detailed
+ gammaCoherence: number; // Placeholder, would be more detailed
+ activeRegions: string[];
 }
 
 // ============================================================================
@@ -282,14 +311,14 @@ export class MoshiCSMNeural {
   private observatory: NeuralObservatory;
   
   // Moshi-specific components
-  private multimodalBackbone: any; // Would be actual transformer
-  private audioDecoder: any;       // Would be actual decoder
-  private mimiCodec: any;          // Would be Mimi implementation
+  private multimodalBackbone: MultimodalBackbone; // Would be actual transformer
+  private audioDecoder: AudioDecoder;       // Would be actual decoder
+  private mimiCodec: MimiCodec;          // Would be Mimi implementation
   
   // Neural state
-  private conversationContext: CSMContextPacket[] = [];
-  private workingMemory: Map<string, Float32Array> = new Map();
-  private attentionState: any = null;
+  private conversationContext: CSMContextPacket[];
+  private workingMemory: Map<string, Float32Array>;
+  private attentionState: AttentionState | null;
   
   constructor() {
     this.webgpuEngine = new WebGPUMoshiEngine();
@@ -299,6 +328,14 @@ export class MoshiCSMNeural {
     this.hebbian = new CompetitiveHebbian();
     this.bandit = new NeuralBandit();
     this.observatory = new NeuralObservatory();
+
+    // Initialize placeholder components and state
+    this.multimodalBackbone = {}; // Replace with actual initialization
+    this.audioDecoder = {};       // Replace with actual initialization
+    this.mimiCodec = {};          // Replace with actual initialization
+    this.conversationContext = [];
+    this.workingMemory = new Map();
+    this.attentionState: AttentionState | null = null;
   }
   
   async initialize(): Promise<void> {
@@ -314,30 +351,26 @@ export class MoshiCSMNeural {
   /**
    * Main processing loop: Convert audio to neural packets and race them
    */
-  async processAudioChunk(audioData: Float32Array): Promise<{
-    transcription: string;
-    response: Float32Array;
-    consciousness: boolean;
-  }> {
+  async processAudioChunk(audioData: Float32Array): Promise<{ transcription: string; response: Float32Array; consciousness: boolean; }> {
     const startTime = performance.now();
     
     // 1. Encode audio using Mimi-like codec to packets
-    const codecPackets = await this.encodeAudioToPackets(audioData);
+    const codecPackets: MimiCodecPacket[] = await this.encodeAudioToPackets(audioData); // Already has type
     this.observatory.recordPacket(codecPackets[0], 'sent');
     
     // 2. Generate competing interpretation packets
-    const interpretationPackets = await this.generateInterpretations(codecPackets);
+    const interpretationPackets: MoshiTokenPacket[] = await this.generateInterpretations(codecPackets);
     
     // 3. Race packets through cognitive network (WebGPU accelerated)
-    const winningPacket = await this.webgpuEngine.racePacketsGPU(interpretationPackets);
-    this.observatory.recordRace(
+    const winningPacket: NeuralPacket = await this.webgpuEngine.racePacketsGPU(interpretationPackets);
+    this.observatory.recordRace( // Assuming recordRace takes RaceResult and an array of RaceResult
       { thought: winningPacket, raceTime: performance.now() - startTime, path: winningPacket.path!, hops: 1, winner: true },
       interpretationPackets.map(p => ({ thought: p, raceTime: 0, path: p.path!, hops: 1, winner: false }))
     );
     
     // 4. Check for gamma binding (consciousness)
-    const gammaBurst = this.gammaOscillator.generateBurst(winningPacket);
-    const isConscious = this.gammaOscillator.detectBinding([gammaBurst]);
+    const gammaBurst: NeuralPacket[] = this.gammaOscillator.generateBurst(winningPacket);
+    const isConscious: boolean = this.gammaOscillator.detectBinding([gammaBurst]);
     this.observatory.recordBurst(gammaBurst);
     
     // 5. Extract transcription from winning packet
@@ -353,7 +386,7 @@ export class MoshiCSMNeural {
       response = await this.generateResponse(winningPacket);
       
       // Update conversation context
-      this.updateConversationContext(winningPacket, transcription);
+      this.updateConversationContext(winningPacket as MoshiTokenPacket, transcription); // Cast needed due to method signature
     }
     
     // 7. Hebbian learning - strengthen winning route
@@ -369,23 +402,29 @@ export class MoshiCSMNeural {
   /**
    * Encode audio to neural packets using Mimi-inspired codec
    */
-  private async encodeAudioToPackets(audio: Float32Array): Promise<MimiCodecPacket[]> {
-    const packets: MimiCodecPacket[] = [];
-    const frameSize = 320; // 20ms at 16kHz
+  private async encodeAudioToPackets(audio: Float32Array): Promise<MimiCodecPacket[]> { // Corrected signature
+    const packets: MimiCodecPacket[] = []; // Added type
+    const frameSize: number = 320; // 20ms at 16kHz // Added type
     
-    for (let i = 0; i < audio.length; i += frameSize) {
-      const frame = audio.slice(i, i + frameSize);
+    for (let i: number = 0; i < audio.length; i += frameSize) { // Added type
       
+      const frame: Float32Array = audio.slice(i, i + frameSize);
       // Simulate Mimi encoding (would use actual codec)
-      const quantized = this.simulateMimiQuantization(frame);
+      const quantized: { levels: Uint16Array[]; error: number; compression: number; } = this.simulateMimiQuantization(frame); // Added type
       
       // Create packet for each codec level
-      for (let level = 0; level < 8; level++) {
+      for (let level: number = 0; level < 8; level++) { // Added type
         const packet: MimiCodecPacket = {
-          id: `mimi_${i}_${level}`,
+          id: `mimi_${i}_${level}`, // Should this be a string? Yes.
           streamId: StreamID.USER,
           sequenceNumber: Math.floor(i / frameSize) * 8 + level,
           timestamp: BigInt(Date.now() * 1000 + i * 20000), // 20ms per frame
+
+          // Add necessary packet properties
+          amplitude: 0, // Placeholder
+          frequency: 0, // Placeholder
+          phase: 0, // Placeholder
+          harmonics: [], // Placeholder
           
           // Neural properties
           amplitude: level === 0 ? 0.9 : 0.3, // Semantic level is stronger
@@ -432,22 +471,22 @@ export class MoshiCSMNeural {
   /**
    * Generate competing interpretation packets
    */
-  private async generateInterpretations(codecPackets: MimiCodecPacket[]): Promise<MoshiTokenPacket[]> {
+ private async generateInterpretations(codecPackets: MimiCodecPacket[]): Promise<MoshiTokenPacket[]> {
     const interpretations: MoshiTokenPacket[] = [];
     
     // Group by semantic level (level 0)
-    const semanticPackets = codecPackets.filter(p => p.codecLevel === 0);
+    const semanticPackets: MimiCodecPacket[] = codecPackets.filter(p => p.codecLevel === 0);
     
-    for (const semanticPacket of semanticPackets) {
+    for (const semanticPacket: MimiCodecPacket of semanticPackets) { // Added type
       // Generate multiple interpretation hypotheses
-      const hypotheses = [
+      const hypotheses: string[] = [ // Added type
         'question', 'statement', 'command', 'exclamation', 'noise'
       ];
       
-      for (const hypothesis of hypotheses) {
-        const confidence = Math.random() * 0.4 + 0.6; // 0.6-1.0
+      for (const hypothesis: string of hypotheses) { // Added type
+        const confidence: number = Math.random() * 0.4 + 0.6; // 0.6-1.0 // Added type
         
-        const interpretation: MoshiTokenPacket = {
+        const interpretation: MoshiTokenPacket = { // Added type
           id: `interp_${semanticPacket.id}_${hypothesis}`,
           streamId: StreamID.USER,
           sequenceNumber: semanticPacket.sequenceNumber * 10 + hypotheses.indexOf(hypothesis),
@@ -508,14 +547,14 @@ export class MoshiCSMNeural {
   /**
    * Extract transcription from winning packet
    */
-  private async extractTranscription(packet: MoshiTokenPacket): Promise<string> {
+  private async extractTranscription(packet: MoshiTokenPacket): Promise<string> { // Corrected signature
     // Simulate running the text through Moshi backbone
     if (packet.tokenType === 'text') {
-      const hypotheses = ['question', 'statement', 'command', 'exclamation', 'noise'];
-      const type = hypotheses[packet.tokenId] || 'unknown';
+      const hypotheses: string[] = ['question', 'statement', 'command', 'exclamation', 'noise']; // Added type
+      const type: string = hypotheses[packet.tokenId] || 'unknown'; // Added type
       
       // Generate text based on token type and embeddings
-      const words = this.generateWordsFromEmbeddings(packet.embeddings, type);
+      const words: string[] = this.generateWordsFromEmbeddings(packet.embeddings, type);
       return words.join(' ');
     }
     
@@ -525,19 +564,19 @@ export class MoshiCSMNeural {
   /**
    * Generate response through CSM
    */
-  private async generateResponse(packet: MoshiTokenPacket): Promise<Float32Array> {
+ private async generateResponse(packet: MoshiTokenPacket): Promise<Float32Array> { // Corrected signature
     // Update attention state
     this.attentionState = this.attention.calculateInterference([packet]);
+    // Generate response tokens 
+    const responseTokens: MoshiTokenPacket[] = await this.generateResponseTokens(packet);
     
-    // Generate response tokens
-    const responseTokens = await this.generateResponseTokens(packet);
-    
-    // Convert to audio using audio decoder
-    const audioResponse = await this.tokensToAudio(responseTokens);
+    // Convert to audio using audio decoder // Corrected signature
+    const audioResponse: Float32Array = await this.tokensToAudio(responseTokens);
     
     return audioResponse;
   }
   
+
   /**
    * Update conversation context
    */
@@ -586,20 +625,16 @@ export class MoshiCSMNeural {
   
   // ========== HELPER METHODS ==========
   
-  private simulateMimiQuantization(frame: Float32Array): {
-    levels: Uint16Array[];
-    error: number;
-    compression: number;
-  } {
+  private simulateMimiQuantization(frame: Float32Array): { levels: Uint16Array[]; error: number; compression: number; } {
     // Simulate 8-level quantization like Mimi
     const levels: Uint16Array[] = [];
-    let totalError = 0;
+    let totalError: number = 0; // Added type
     
-    for (let level = 0; level < 8; level++) {
-      const quantized = new Uint16Array(frame.length);
+    for (let level: number = 0; level < 8; level++) {
+      const quantized: Uint16Array = new Uint16Array(frame.length); // Explicit type
       for (let i = 0; i < frame.length; i++) {
         // Progressively finer quantization
-        const bits = level === 0 ? 8 : 4; // Semantic gets more bits
+        const bits: number = level === 0 ? 8 : 4; // Semantic gets more bits // Added type
         const maxVal = (1 << bits) - 1;
         quantized[i] = Math.floor((frame[i] + 1) * maxVal / 2);
         
@@ -619,28 +654,28 @@ export class MoshiCSMNeural {
   
   private generateWordsFromEmbeddings(embeddings: Float32Array, type: string): string[] {
     // Simple word generation based on embedding patterns
-    const words = ['hello', 'how', 'are', 'you', 'today', 'what', 'is', 'the', 'weather', 'like'];
-    const numWords = Math.floor(embeddings[0] * 5) + 2; // 2-7 words
-    
+    const words: string[] = ['hello', 'how', 'are', 'you', 'today', 'what', 'is', 'the', 'weather', 'like']; // Added type
+    const numWords: number = Math.floor(embeddings[0] * 5) + 2; // 2-7 words // Added type
+
     return Array.from({ length: numWords }, (_, i) => {
-      const index = Math.floor(Math.abs(embeddings[i % embeddings.length]) * words.length);
+      const index: number = Math.floor(Math.abs(embeddings[i % embeddings.length]) * words.length);
       return words[index % words.length];
     });
   }
   
-  private async generateResponseTokens(inputPacket: MoshiTokenPacket): Promise<MoshiTokenPacket[]> {
+  private async generateResponseTokens(inputPacket: MoshiTokenPacket): Promise<MoshiTokenPacket[]> { // Corrected signature
     // Generate response tokens based on input
-    const responseTokens: MoshiTokenPacket[] = [];
+    const responseTokens: MoshiTokenPacket[] = []; // Added type
     
     // Simple response generation
-    const responses = [
+    const responses: string[] = [
       "I understand",
       "That's interesting", 
       "Tell me more",
       "I see",
       "How fascinating"
     ];
-    
+
     const response = responses[Math.floor(Math.random() * responses.length)];
     const words = response.split(' ');
     
@@ -688,20 +723,20 @@ export class MoshiCSMNeural {
     return responseTokens;
   }
   
-  private async tokensToAudio(tokens: MoshiTokenPacket[]): Promise<Float32Array> {
-    // Convert response tokens back to audio
-    const sampleRate = 16000;
-    const audioLength = tokens.length * sampleRate * 0.5; // 0.5s per token
-    const audio = new Float32Array(audioLength);
+  private async tokensToAudio(tokens: MoshiTokenPacket[]): Promise<Float32Array> { // Corrected signature
+    // Convert response tokens back to audio // Corrected signature
+    const sampleRate: number = 16000; // Added explicit type
+    const audioLength: number = tokens.length * sampleRate * 0.5; // 0.5s per token // Added explicit type
+    const audio: Float32Array = new Float32Array(audioLength); // Added explicit type
     
     tokens.forEach((token, i) => {
-      const start = i * sampleRate * 0.5;
-      const duration = sampleRate * 0.5;
+      const start: number = i * sampleRate * 0.5; // Added explicit type
+      const duration: number = sampleRate * 0.5; // Added explicit type
       
       // Generate simple audio based on token properties
       for (let j = 0; j < duration; j++) {
-        const t = j / sampleRate;
-        const frequency = 200 + token.frequency * 10; // Convert to audio frequency
+ const t: number = j / sampleRate;
+ const frequency: number = 200 + token.frequency * 10; // Convert to audio frequency
         audio[start + j] = token.amplitude * Math.sin(2 * Math.PI * frequency * t) * 0.1;
       }
     });
@@ -712,8 +747,8 @@ export class MoshiCSMNeural {
   /**
    * Get current neural state for visualization
    */
-  getNeralState(): any {
-    return {
+  getNeralState(): NeuralState {
+    return { // Ensuring return type matches NeuralState interface
       conversationTurns: this.conversationContext.length,
       attentionFocus: this.attentionState,
       synapticStrength: this.hebbian.getStatistics().averageStrength,
