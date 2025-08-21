@@ -19,6 +19,62 @@ export class GammaOscillator {
   private readonly BURST_WINDOW = 25; // ms - gamma period (1000/40)
   private readonly THETA_FREQ = 6; // Hz - memory rhythm
 
+  private gammaPhaseAccumulator: number = 0; // Accumulates phase for gamma synchronization
+  private thetaPhase: number = 0; // Current theta phase
+
+  /**
+   * Synchronize an input frame (like audio) to gamma oscillations.
+   * This simulates converting a lower-frequency input stream into
+   * gamma-band packets for binding.
+   */
+  public synchronizeToFrame(audioFrame: Float32Array): NeuralPacket[] {
+    const packets: NeuralPacket[] = [];
+    const frameTimestamp = Date.now(); // Get current timestamp in ms
+
+    // Calculate basic frame energy for amplitude
+    const frameEnergy = this.calculateFrameEnergy(audioFrame);
+
+    // Determine number of gamma cycles per frame (approx 3.2 for 12.5Hz input to 40Hz gamma)
+    const gammaCyclesPerFrame = this.GAMMA_FREQ / (1000 / (audioFrame.length / 44100 * 1000)); // Assuming 44.1kHz sample rate for audioFrame
+    const numGammaPackets = Math.floor(gammaCyclesPerFrame + this.gammaPhaseAccumulator);
+
+    // Update phase accumulator for fractional cycles
+    this.gammaPhaseAccumulator = (gammaCyclesPerFrame + this.gammaPhaseAccumulator) % 1;
+
+    for (let i = 0; i < numGammaPackets; i++) {
+      const packetTimestamp = frameTimestamp + (i * (1000 / this.GAMMA_FREQ)); // Distribute packets within the frame duration
+
+      // Update gamma phase
+      const gammaPhase = (i / numGammaPackets) * 2 * Math.PI; // Distribute phase evenly across packets in this frame
+
+      // Update theta phase (slower modulation)
+      // Estimate time elapsed since start or track globally for smoother theta
+      // For simplicity here, a basic time mapping within the frame:
+      const thetaPhase = (packetTimestamp / (1000 / this.THETA_FREQ) * 2 * Math.PI) % (2 * Math.PI);
+      this.thetaPhase = thetaPhase; // Store the last calculated theta phase
+
+      // Theta modulates gamma amplitude (theta-gamma coupling)
+      const thetaModulation = (Math.sin(this.thetaPhase) + 1) / 2; // 0 to 1 based on sine wave
+      const gammaAmplitude = frameEnergy * (0.5 + 0.5 * thetaModulation); // Modulate frame energy
+
+      // Create a basic NeuralPacket for this gamma cycle
+      packets.push({
+        id: `${crypto.randomUUID()}_gamma_sync_${i}`,
+        type: PacketType.PERCEPTION, // Or a new type like SYNC
+        timestamp: BigInt(packetTimestamp * 1000), // Convert ms to microseconds
+        sourceAS: { id: 'gamma-oscillator', type: 'internal' }, // Source is the oscillator
+        destinationAS: { id: 'gamma-binding', type: 'consciousness' }, // Destination for binding
+        amplitude: gammaAmplitude,
+        frequency: this.GAMMA_FREQ,
+        phase: gammaPhase,
+        harmonics: [], // Simplification for this method
+        qos: { dscp: DSCP.BACKGROUND_PROCESS, latency: 25, bandwidth: 0, jitter: 1, loss: 0, spikeRate: 40, burstiness: thetaModulation, coherence: 0, plasticityRate: 0.1 }, // Basic QoS
+        payload: { sourceFrameEnergy: frameEnergy, thetaPhase: this.thetaPhase }, // Include relevant data in payload
+      });
+    }
+    return packets;
+  }
+
   /**
  * Generate burst of packets at gamma frequency
    */
