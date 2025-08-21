@@ -4,20 +4,21 @@
  */
 
 // Simple EventEmitter implementation for browser compatibility
+type Listener = (...args: unknown[]) => void;
 class EventEmitter {
-  private events: { [key: string]: Function[] } = {};
-  on(event: string, listener: Function): this {
+  private events: { [key: string]: Listener[] } = {};
+  on(event: string, listener: Listener): this {
     (this.events[event] ||= []).push(listener);
     return this;
   }
-  off(event: string, listener: Function): this {
+  off(event: string, listener: Listener): this {
     const list = this.events[event];
     if (!list) return this;
     const i = list.indexOf(listener);
     if (i >= 0) list.splice(i, 1);
     return this;
   }
-  emit(event: string, ...args: any[]): boolean {
+  emit(event: string, ...args: unknown[]): boolean {
     const list = this.events[event];
     if (!list) return false;
     for (const fn of list) {
@@ -108,9 +109,9 @@ export class PacketWebSocket extends EventEmitter {
         this.ws.binaryType = 'arraybuffer';
         this.ws.onopen = () => { this.startLoops(); res(); };
         this.ws.onclose = () => { this.stopLoops(); this.emit('disconnect'); };
-        this.ws.onerror = (e) => rej(e);
+        this.ws.onerror = (e) => rej(e as unknown as Error);
         this.ws.onmessage = (ev) => this.onMessage(ev);
-      } catch (e) { rej(e); }
+      } catch (e) { rej(e as unknown as Error); }
     });
   }
   close() { this.stopLoops(); this.ws?.close(); this.ws = null; }
@@ -121,7 +122,7 @@ export class PacketWebSocket extends EventEmitter {
     const data = new TextEncoder().encode(text);
     this.sendQ.enqueue({ type: isFinal?PacketType.TEXT_FINAL:PacketType.TEXT_PARTIAL, priority: isFinal?Priority.HIGH:Priority.NORMAL, sequenceNumber: this.seq++, timestamp: Date.now(), data, requiresAck: isFinal });
   }
-  sendMetadata(meta: any) {
+  sendMetadata(meta: unknown) {
     const data = new TextEncoder().encode(JSON.stringify(meta));
     this.sendQ.enqueue({ type: PacketType.METADATA, priority: Priority.LOW, sequenceNumber: this.seq++, timestamp: Date.now(), data, requiresAck: false });
   }
@@ -143,7 +144,7 @@ export class PacketWebSocket extends EventEmitter {
   }
   private onMessage(ev: MessageEvent) {
     try {
-      const pkt = PacketCodec.decode(new Uint8Array(ev.data));
+      const pkt = PacketCodec.decode(new Uint8Array(ev.data as ArrayBuffer));
       const lat = Date.now() - pkt.timestamp; this.stats.totalLatency += lat; this.stats.averageLatency = this.stats.totalLatency / (this.stats.packetsReceived+1);
       if (pkt.sequenceNumber < this.expected) { if (pkt.type===PacketType.AUDIO_CHUNK) this.recvQ.enqueue(pkt); return; }
       this.recvQ.enqueue(pkt); if (pkt.sequenceNumber === this.expected) this.expected++;
@@ -175,13 +176,13 @@ export class SolaceLivePacketClient extends EventEmitter {
     this.packetWS.on('audio', (a: Float32Array, t: number)=>this.emit('audioChunk', a, t));
     this.packetWS.on('textPartial', (s: string, t: number)=>this.emit('textPartial', s, t));
     this.packetWS.on('textFinal', (s: string, t: number)=>this.emit('textFinal', s, t));
-    this.packetWS.on('metadata', (m: any, t: number)=>this.emit('metadata', m, t));
+    this.packetWS.on('metadata', (m: unknown, t: number)=>this.emit('metadata', m, t));
     this.packetWS.on('disconnect', ()=>this.emit('disconnected'));
   }
   sendAudio(a: Float32Array){ this.packetWS.sendAudio(a); }
   sendUserText(s: string){ this.packetWS.sendText(s, true); }
   sendPartialTranscription(s: string){ this.packetWS.sendText(s, false); }
+  sendMetadata(meta: unknown){ this.packetWS.sendMetadata(meta); }
   getPerformanceStats(){ return this.packetWS.getStats(); }
   close(){ this.packetWS.close(); }
 }
-

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, VolumeX, Settings, Loader2, Radio, Activity, Cpu, Zap } from 'lucide-react';
+import { Mic, MicOff, VolumeX, Settings, Loader2, Activity, Cpu, Zap } from 'lucide-react';
 import { PacketStreamingService, createStreamingService } from '../services/packetStreamingService';
 import { CSMStreamingService } from '../services/csmStreamingService';
 import { SpeechService } from '../services/speechService';
@@ -7,6 +7,7 @@ import { VoiceActivityDetection } from '../services/voiceActivityDetection';
 import { WhisperWasmService } from '../services/whisperWasmService';
 import type { TranscriptionMessage, AudioState } from '../types';
 import styles from './VoiceInterface.module.css';
+import { AudioChunkPlayer } from '../utils/audioPlayer';
 
 interface PacketStreamingVoiceInterfaceProps {
   onTranscription?: (message: TranscriptionMessage) => void;
@@ -47,6 +48,7 @@ export const PacketStreamingVoiceInterface: React.FC<PacketStreamingVoiceInterfa
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const audioPlayerRef = useRef(new AudioChunkPlayer(24000));
 
   useEffect(() => {
     initializeServices();
@@ -54,6 +56,7 @@ export const PacketStreamingVoiceInterface: React.FC<PacketStreamingVoiceInterfa
     
     return () => {
       cleanup();
+      try { audioPlayerRef.current.stop(); } catch {}
     };
   }, []);
 
@@ -89,19 +92,25 @@ export const PacketStreamingVoiceInterface: React.FC<PacketStreamingVoiceInterfa
   const setupPacketEventHandlers = () => {
     if (!packetService.current) return;
 
-    packetService.current.on('audioChunk', (audioBuffer: ArrayBuffer, timestamp: number) => {
+    packetService.current.on('audioChunk', (audioBuffer: ArrayBuffer) => {
+      try {
+        const f32 = new Float32Array(audioBuffer);
+        audioPlayerRef.current.playFloat32(f32);
+      } catch (e) {
+        console.warn('[PacketStreaming] Audio play error:', e);
+      }
       console.log(`[PacketStreaming] Received audio chunk: ${audioBuffer.byteLength} bytes`);
     });
 
-    packetService.current.on('textPartial', (text: string, timestamp: number) => {
+    packetService.current.on('textPartial', (text: string) => {
       setCurrentStreamingText(prev => prev + text);
     });
 
-    packetService.current.on('textFinal', (text: string, timestamp: number) => {
+    packetService.current.on('textFinal', (text: string) => {
       handlePacketTextResponse(text);
     });
 
-    packetService.current.on('metadata', (metadata: any, timestamp: number) => {
+    packetService.current.on('metadata', (metadata: unknown) => {
       console.log('[PacketStreaming] Received metadata:', metadata);
     });
 
@@ -477,45 +486,27 @@ export const PacketStreamingVoiceInterface: React.FC<PacketStreamingVoiceInterfa
     setCurrentStreamingText('');
   };
 
-  const stopRecording = async () => {
-    try {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
-      }
-      
-      speechService.current.stopTranscription();
-      
-      if (packetService.current) {
-        packetService.current.stopStreaming();
+  const toggleRecording = async () => {
+    if (usePacketStreaming && packetSupported && packetService.current) {
+      if (audioState.isRecording) {
+        // Stop packet frame capture
+        try { packetService.current.stopFrameCapture(); } catch {}
+        setAudioState(prev => ({ ...prev, isRecording: false, audioLevel: 0 }));
+        setVoiceActivityLevel(0);
       } else {
-        fallbackService.current.stopStreaming();
+        // Start packet frame capture (80 ms @ 24kHz)
+        try {
+          await packetService.current.startFrameCapture();
+          setAudioState(prev => ({ ...prev, isRecording: true }));
+        } catch (e) {
+          setError('Failed to start packet frame capture');
+          console.error(e);
+        }
       }
-      
-      vadService.current.stopVAD();
-      
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
-
-      setAudioState(prev => ({ 
-        ...prev, 
-        isRecording: false, 
-        audioLevel: 0 
-      }));
-      
-      setVoiceActivityLevel(0);
-      
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-      }
-    } catch (err) {
-      setError('Failed to stop recording');
-      console.error(err);
+      return;
     }
-  };
 
-  const toggleRecording = () => {
+    // Fallback to legacy streaming flow
     if (audioState.isRecording) {
       stopRecording();
     } else {
@@ -523,270 +514,27 @@ export const PacketStreamingVoiceInterface: React.FC<PacketStreamingVoiceInterfa
     }
   };
 
-  const stopSpeaking = () => {
-    if (packetService.current) {
-      packetService.current.stopStreaming();
-    } else {
-      fallbackService.current.stopStreaming();
-    }
-    speechService.current.stopSpeaking();
-    setAudioState(prev => ({ ...prev, isSpeaking: false }));
-  };
-
-  const togglePacketStreaming = async () => {
-    if (!packetSupported) {
-      setError('Packet streaming not available');
-      return;
-    }
-    
-    setUsePacketStreaming(!usePacketStreaming);
-    
-    if (!usePacketStreaming) {
-      // Switching to packet streaming
-      try {
-        if (!packetService.current) {
-          await initializeServices();
-        }
-      } catch (error) {
-        setError('Failed to enable packet streaming');
+  const stopRecording = async () => {
+    try {
+      if (usePacketStreaming && packetSupported && packetService.current) {
+        try { packetService.current.stopFrameCapture(); } catch {}
       }
-    }
-  };
+      // Legacy path cleanup
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      speechService.current.stopTranscription();
+      if (packetService.current && !usePacketStreaming) {
+        packetService.current.stopStreaming();
+      } else {
+        fallbackService.current.stopStreaming();
+      }
+      vadService.current.stopVAD();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      setAudioState(prev => ({ ...prev, isRecording: false, audioLevel: 0 }));
+      setVoiceActivityLevel(0);
+      if
 
-  const toggleWhisperWasm = async () => {
-    if (!useWhisperWasm && whisperStatus !== 'ready') {
-      await initializeWhisperWasm();
-    }
-    setUseWhisperWasm(!useWhisperWasm);
-  };
-
-  const toggleContinuousMode = () => {
-    setIsContinuousMode(!isContinuousMode);
-  };
-
-  const refreshConnection = async () => {
-    if (usePacketStreaming && packetSupported) {
-      await initializeServices();
-    } else {
-      await checkCSMConnection();
-    }
-  };
-
-  return (
-    <div className={styles.container}>
-      <div className={styles.card}>
-        <div className={styles.header}>
-          <h1 className={styles.title}>SolaceLive Packet</h1>
-          <p className={styles.subtitle}>
-            {usePacketStreaming ? 'Packet-Based Real-time Streaming' : 'Traditional CSM Streaming'}
-          </p>
-          
-          <div className={styles.statusContainer}>
-            <div className={`${styles.statusBadge} ${
-              isConnected ? styles.statusConnected : styles.statusDisconnected
-            }`}>
-              <div className={`${styles.statusDot} ${
-                isConnected ? styles.statusDotConnected : styles.statusDotDisconnected
-              }`} />
-              {usePacketStreaming && packetSupported 
-                ? (isConnected ? 'Packet Streaming Connected' : 'Packet Streaming Disconnected')
-                : (isConnected ? 'CSM Connected' : 'CSM Disconnected')
-              }
-            </div>
-            
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <button
-                onClick={togglePacketStreaming}
-                className={styles.refreshButton}
-                style={{ 
-                  fontSize: '0.75rem', 
-                  padding: '0.25rem 0.5rem',
-                  backgroundColor: usePacketStreaming ? 'rgba(139, 69, 19, 0.3)' : 'rgba(255, 255, 255, 0.1)'
-                }}
-                disabled={!packetSupported}
-              >
-                <Zap size={12} />
-                {usePacketStreaming ? 'Packet ON' : 'Packet OFF'}
-              </button>
-              
-              <button
-                onClick={toggleWhisperWasm}
-                className={styles.refreshButton}
-                style={{ 
-                  fontSize: '0.75rem', 
-                  padding: '0.25rem 0.5rem',
-                  backgroundColor: useWhisperWasm ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.1)'
-                }}
-                disabled={whisperStatus === 'loading'}
-              >
-                {whisperStatus === 'loading' ? (
-                  <Loader2 size={12} className={styles.spinner} />
-                ) : (
-                  <Cpu size={12} />
-                )}
-                Whisper {useWhisperWasm ? 'ON' : 'OFF'}
-              </button>
-
-              <button
-                onClick={toggleContinuousMode}
-                className={styles.refreshButton}
-                style={{ 
-                  fontSize: '0.75rem', 
-                  padding: '0.25rem 0.5rem',
-                  backgroundColor: isContinuousMode ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.1)'
-                }}
-              >
-                <Activity size={12} />
-                VAD {isContinuousMode ? 'ON' : 'OFF'}
-              </button>
-            </div>
-          </div>
-          
-          {/* Packet streaming stats */}
-          {usePacketStreaming && streamingStats && (
-            <div style={{ 
-              fontSize: '0.75rem', 
-              color: '#86efac', 
-              marginTop: '0.5rem',
-              display: 'flex',
-              gap: '1rem',
-              flexWrap: 'wrap'
-            }}>
-              <span>Packets: {streamingStats.packetsSent}↑ {streamingStats.packetsReceived}↓</span>
-              <span>Latency: {streamingStats.averageLatency?.toFixed(1)}ms</span>
-              <span>Queue: {streamingStats.queueSizes?.send || 0}</span>
-            </div>
-          )}
-        </div>
-
-        {error && (
-          <div className={styles.error}>
-            {error}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <div style={{ position: 'relative', marginBottom: '2rem' }}>
-            <button
-              onClick={toggleRecording}
-              disabled={!isConnected || audioState.isProcessing}
-              className={`${styles.mainButton} ${
-                audioState.isRecording
-                  ? styles.mainButtonRecording
-                  : styles.mainButtonIdle
-              } ${(!isConnected || audioState.isProcessing) ? styles.mainButtonDisabled : ''}`}
-            >
-              {audioState.isProcessing ? (
-                <Loader2 className={styles.spinner} />
-              ) : audioState.isRecording ? (
-                <Mic />
-              ) : (
-                <MicOff />
-              )}
-            </button>
-
-            {audioState.isRecording && (
-              <div 
-                className={styles.pulse}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  borderRadius: '50%',
-                  border: `4px solid ${usePacketStreaming ? 'rgba(139, 69, 19, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
-                }}
-              />
-            )}
-          </div>
-
-          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-            <p className={styles.statusText}>
-              {audioState.isProcessing
-                ? (usePacketStreaming ? 'Packet Streaming...' : 'Processing...')
-                : audioState.isRecording
-                ? `${isContinuousMode ? 'VAD Active' : (usePacketStreaming ? 'Packet streaming' : 'Streaming conversation')}${useWhisperWasm ? ' (Whisper)' : ''}...`
-                : audioState.isSpeaking
-                ? 'Speaking...'
-                : `Tap to start ${usePacketStreaming ? 'packet streaming' : 'streaming conversation'}`}
-            </p>
-            
-            {isContinuousMode && voiceActivityLevel > 0 && (
-              <div style={{ 
-                width: '200px', 
-                height: '4px', 
-                backgroundColor: 'rgba(255, 255, 255, 0.2)', 
-                borderRadius: '2px', 
-                margin: '0.5rem auto',
-                overflow: 'hidden'
-              }}>
-                <div 
-                  style={{
-                    width: `${Math.min(voiceActivityLevel * 100, 100)}%`,
-                    height: '100%',
-                    backgroundColor: voiceActivityLevel > 0.01 ? (usePacketStreaming ? '#d2691e' : '#4ade80') : '#6b7280',
-                    transition: 'width 0.1s ease'
-                  }}
-                />
-              </div>
-            )}
-            
-            {currentStreamingText && (
-              <p style={{ 
-                color: usePacketStreaming ? '#daa520' : '#86efac', 
-                fontSize: '0.875rem', 
-                marginTop: '0.5rem',
-                opacity: 0.8 
-              }}>
-                {currentStreamingText}...
-              </p>
-            )}
-            
-            {audioState.isSpeaking && (
-              <button onClick={stopSpeaking} className={styles.stopButton}>
-                <VolumeX size={16} />
-                Stop Speaking
-              </button>
-            )}
-          </div>
-
-          <div className={styles.transcriptions}>
-            {transcriptions.slice(-4).map((message) => (
-              <div
-                key={message.id}
-                className={`${styles.transcriptionMessage} ${
-                  message.speaker === 'user'
-                    ? styles.transcriptionUser
-                    : styles.transcriptionAssistant
-                }`}
-              >
-                <div className={styles.transcriptionLabel}>
-                  {message.speaker === 'user' ? 'You' : 'Assistant'}
-                  {message.isProcessing && (
-                    <span style={{ 
-                      color: usePacketStreaming ? '#daa520' : '#86efac', 
-                      marginLeft: '0.5rem' 
-                    }}>
-                      {usePacketStreaming ? 'packet streaming...' : 'streaming...'}
-                    </span>
-                  )}
-                </div>
-                <div className={styles.transcriptionContent}>
-                  <span>{message.text}</span>
-                  {message.isProcessing && (
-                    <Loader2 size={12} className={styles.spinner} style={{ opacity: 0.5 }} />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-          <button onClick={refreshConnection} className={styles.refreshButton}>
-            <Settings size={16} />
-            Refresh Connection
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};

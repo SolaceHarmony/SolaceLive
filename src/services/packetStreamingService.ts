@@ -4,6 +4,7 @@
  */
 
 import { PacketWebSocket, SolaceLivePacketClient } from '../lib/packet-websocket';
+import { AudioFrameCapturer } from '../utils/audioFrames';
 
 // Simple EventEmitter implementation for browser compatibility
 class EventEmitter {
@@ -61,6 +62,9 @@ export class PacketStreamingService extends EventEmitter {
   private audioQueue: ArrayBuffer[] = [];
   private textBuffer: string = '';
   private isStreaming: boolean = false;
+  private frameCapturer: AudioFrameCapturer | null = null;
+  private readonly FRAME_SR = 24000;
+  private readonly FRAME_SAMPLES = 1920; // 80ms @ 24kHz
 
   constructor(config: StreamingConfig = {}) {
     super();
@@ -73,7 +77,7 @@ export class PacketStreamingService extends EventEmitter {
       temperature: 0.8,
       maxTokens: 2048,
       audioFormat: 'wav',
-      sampleRate: 24000,
+      sampleRate: this.FRAME_SR,
       ...config
     };
   }
@@ -82,23 +86,57 @@ export class PacketStreamingService extends EventEmitter {
    * Connect to packet WebSocket server
    */
   async connect(): Promise<void> {
-    if (this.isConnected) {
-      return;
-    }
+    if (this.isConnected) return;
 
     try {
-      this.packetClient = new SolaceLivePacketClient(this.config.serverUrl);
+      this.packetClient = new SolaceLivePacketClient(this.config.serverUrl!);
       await this.packetClient.connect();
-      
+
       this.setupPacketHandlers();
       this.isConnected = true;
-      
+
+      // Send conversation_start metadata aligned with Moshi-like config
+      this.packetClient.sendMetadata({
+        type: 'conversation_start',
+        config: {
+          sampleRate: this.FRAME_SR,
+          frameSamples: this.FRAME_SAMPLES,
+          format: 'pcm_f32',
+        },
+      });
+
       this.emit('connected');
       console.log('[PacketStreaming] Connected to server');
     } catch (error) {
       console.error('[PacketStreaming] Connection failed:', error);
       throw error;
     }
+  }
+
+  /** Start continuous 80ms frame capture and send frames over packet WS */
+  async startFrameCapture(): Promise<void> {
+    if (!this.isConnected || !this.packetClient) throw new Error('Not connected');
+    if (this.frameCapturer) return;
+
+    this.frameCapturer = new AudioFrameCapturer((frame) => {
+      // frame is Float32Array length 1920 at 24kHz
+      try {
+        this.packetClient!.sendAudio(frame);
+      } catch (e) {
+        console.warn('[PacketStreaming] Failed to send frame', e);
+      }
+    }, this.FRAME_SR, this.FRAME_SAMPLES);
+
+    await this.frameCapturer.start();
+    this.isStreaming = true;
+    this.emit('streamingStarted');
+  }
+
+  stopFrameCapture(): void {
+    try { this.frameCapturer?.stop(); } catch {}
+    this.frameCapturer = null;
+    this.isStreaming = false;
+    this.emit('streamingStopped');
   }
 
   /**
@@ -169,9 +207,11 @@ export class PacketStreamingService extends EventEmitter {
    */
   stopStreaming(): void {
     this.isStreaming = false;
-    
-    // Note: End-of-stream would be handled by the underlying PacketWebSocket
-
+    // Stop any ongoing frame capture
+    if (this.frameCapturer) {
+      try { this.frameCapturer.stop(); } catch {}
+      this.frameCapturer = null;
+    }
     this.emit('streamingStopped');
   }
 
@@ -199,7 +239,10 @@ export class PacketStreamingService extends EventEmitter {
       this.packetClient.close();
       this.packetClient = null;
     }
-    
+    if (this.frameCapturer) {
+      try { this.frameCapturer.stop(); } catch {}
+      this.frameCapturer = null;
+    }
     this.isConnected = false;
     this.isStreaming = false;
     this.emit('disconnected');
