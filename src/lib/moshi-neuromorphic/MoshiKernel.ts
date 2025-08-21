@@ -4,11 +4,15 @@ import { NeuralPacket, PacketType } from '../neuromorphic-research/neural-packet
 import { ThoughtRacer } from '../neuromorphic-research/thought-racer';
 import { GammaOscillator } from '../neuromorphic-research/gamma-oscillator';
 import { AttentionMechanism } from '../neuromorphic-research/attention-mechanism';
+import { MimiGammaSynchronizer } from './MimiGammaSynchronizer';
+import { ConsciousnessOrchestrator } from './ConsciousnessOrchestrator';
 
 export class MoshiKernel {
- private thoughtRacer: ThoughtRacer = new ThoughtRacer();
- private gammaOsc: GammaOscillator = new GammaOscillator();
- private attention: AttentionMechanism = new AttentionMechanism();
+  private thoughtRacer: ThoughtRacer = new ThoughtRacer();
+  private gammaOsc: GammaOscillator = new GammaOscillator();
+  private attention: AttentionMechanism = new AttentionMechanism();
+  private synchronizer: MimiGammaSynchronizer = new MimiGammaSynchronizer();
+  private orchestrator: ConsciousnessOrchestrator = new ConsciousnessOrchestrator();
 
   /**
    * Convert Moshi tokens to NeuralPackets
@@ -37,14 +41,15 @@ export class MoshiKernel {
   /**
    * Process Mimi audio frame through neuromorphic enhancement
    */
-  async processMimiFrame(audioFrame: Float32Array): Promise<NeuralPacket[]> {
+  async processMimiFrame(audioFrame: Float32Array): Promise<void> {
     // 12.5Hz Mimi -> 40Hz Gamma (3.2 gamma cycles per frame)
-    const gammaPackets: NeuralPacket[] = this.gammaOsc.synchronizeToFrame(audioFrame);
+    const gammaPackets: NeuralPacket[] = this.synchronizer.synchronizeToFrame(audioFrame);
 
     // Race for best representation
     const winners: NeuralPacket[] = await this.thoughtRacer.race(gammaPackets);
 
     // Apply attention focusing
-    return this.attention.focus(winners);
+    const focusedPackets = this.attention.focus(winners);
+    this.orchestrator.injectPackets('mimi-audio-stream', focusedPackets);
   }
 }
