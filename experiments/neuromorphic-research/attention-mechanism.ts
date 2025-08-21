@@ -97,6 +97,14 @@ export class AttentionMechanism {
   }
 
   /**
+ * Public method to calculate interference and apply attention gain.
+   */
+  public focus(packets: NeuralPacket[]): NeuralPacket[] {
+    const interference = this.calculateInterference(packets);
+    return this.applyAttentionGain(packets, interference);
+  }
+
+  /**
    * Determine if attention should shift based on interference
    */
   shouldShiftAttention(newPattern: InterferencePattern): boolean {
