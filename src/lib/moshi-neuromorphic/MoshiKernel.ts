@@ -52,4 +52,26 @@ export class MoshiKernel {
     const focusedPackets = this.attention.focus(winners);
     this.orchestrator.injectPackets('mimi-audio-stream', focusedPackets);
   }
+
+  /**
+   * Get current consciousness state for monitoring
+   */
+  public getConsciousnessState() {
+    return this.orchestrator.getState();
+  }
+
+  /**
+   * Get processing metrics for analysis
+   */
+  public getProcessingMetrics() {
+    return this.orchestrator.getMetrics();
+  }
+
+  /**
+   * Reset consciousness system to baseline
+   */
+  public reset(): void {
+    this.orchestrator.reset();
+    this.synchronizer.reset();
+  }
 }

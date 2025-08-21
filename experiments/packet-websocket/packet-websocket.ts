@@ -486,7 +486,7 @@ export class PacketWebSocket extends EventEmitter {
 // USAGE EXAMPLE FOR SALACELIVE
 // ============================================================================
 
-export class SolaceLivePacketClient extends EventEmitter {
+ export class SolaceLivePacketClient extends EventEmitter {
   private packetWS: PacketWebSocket;
   
   constructor(serverUrl: string = 'ws://localhost:8788') {
