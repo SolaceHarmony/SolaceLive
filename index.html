@@ -2,20 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="refresh" content="0; url=./solace-live/dist/" />
+    <link rel="icon" type="image/svg+xml" href="vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Redirecting to SolaceLive UI…</title>
-    <script>
-      // Preserve query string and hash on redirect
-      (function() {
-        var target = './solace-live/dist/' + (location.search || '') + (location.hash || '');
-        if (location.pathname !== '/solace-live/dist/') {
-          location.replace(target);
-        }
-      })();
-    </script>
+    <title>SolaceLive - AI Speech Interface</title>
   </head>
   <body>
-    <p>Redirecting to the new SolaceLive UI… If you are not redirected automatically, <a href="./solace-live/dist/">click here</a>.</p>
+    <div id="root"></div>
+    <!-- Enable Cross-Origin Isolation for Whisper WASM -->
+    <script>
+      // Always attempt to register COOP/COEP service worker when not already isolated
+      if ('serviceWorker' in navigator && (!('crossOriginIsolated' in window) || !window.crossOriginIsolated)) {
+        navigator.serviceWorker
+          .register('/coi-serviceworker.js')
+          .catch(() => { /* no-op in production */ });
+      }
+    </script>
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

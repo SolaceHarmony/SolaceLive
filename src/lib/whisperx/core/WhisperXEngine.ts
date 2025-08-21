@@ -1,0 +1,535 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { EventEmitter } from 'events';
+import type {
+  WhisperXConfig,
+  WhisperXState,
+  TranscriptionResult,
+  AudioChunk,
+  ModelLoadingState
+} from '../../../types/whisperx';
+import { WhisperXError } from '../../../types/whisperx';
+
+export class WhisperXEngine extends EventEmitter {
+  private config: WhisperXConfig;
+  private state: WhisperXState;
+  private modelStates: ModelLoadingState;
+  private audioContext: AudioContext | null = null;
+  private realtimeBuffer: Float32Array[] = [];
+  private realtimeProcessor: ScriptProcessorNode | null = null;
+  private realtimeStream: MediaStream | null = null;
+  private models: {
+    whisper?: any;
+    alignment?: any;
+    diarization?: any;
+    vad?: any;
+  } = {};
+
+  constructor(config: Partial<WhisperXConfig> = {}) {
+    super();
+    
+    this.config = {
+      // Model defaults
+      whisperModel: 'base.en',
+      alignmentModel: 'wav2vec2-base',
+      diarizationModel: 'pyannote/speaker-diarization',
+      
+      // Performance defaults
+      batchSize: 16,
+      chunkLength: 5,
+      vadThreshold: 0.5,
+      alignmentThreshold: 0.7,
+      
+      // Feature defaults
+      enableVAD: true,
+      enableAlignment: true,
+      enableDiarization: true,
+      enableRealtime: true,
+      
+      // Audio defaults
+      sampleRate: 16000,
+      channels: 1,
+      
+      ...config
+    };
+
+    this.state = {
+      isInitialized: false,
+      isProcessing: false,
+      isListening: false,
+      currentSpeaker: null,
+      audioLevel: 0,
+      performance: {
+        processingTime: 0,
+        realTimeFactor: 0,
+        memoryUsage: 0
+      }
+    };
+
+    this.modelStates = {
+      whisper: 'loading',
+      alignment: 'loading',
+      diarization: 'loading',
+      vad: 'loading'
+    };
+  }
+
+  async initialize(): Promise<void> {
+    try {
+      this.emit('initializationStart');
+      console.log('Initializing WhisperX Engine...');
+      
+      // Initialize audio context
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+        sampleRate: this.config.sampleRate
+      });
+      console.log(`Audio context created with sample rate: ${this.config.sampleRate}`);
+
+      // Load models concurrently
+      const loadPromises: Promise<void>[] = [];
+      
+      if (this.config.enableVAD) {
+        console.log('Loading VAD model...');
+        loadPromises.push(this.loadVADModel());
+      }
+      
+      console.log('Loading Whisper model...');
+      loadPromises.push(this.loadWhisperModel());
+      
+      if (this.config.enableAlignment) {
+        console.log('Loading Alignment model...');
+        loadPromises.push(this.loadAlignmentModel());
+      }
+      
+      if (this.config.enableDiarization) {
+        console.log('Loading Diarization model...');
+        loadPromises.push(this.loadDiarizationModel());
+      }
+
+      await Promise.all(loadPromises);
+      
+      this.state.isInitialized = true;
+      console.log('WhisperX Engine initialized successfully');
+      this.emit('initialized');
+      
+    } catch (error) {
+      console.error('WhisperX Engine initialization failed:', error);
+      this.emit('error', new WhisperXError(
+        `Initialization failed: ${error}`,
+        'INIT_FAILED',
+        'initialization'
+      ));
+      throw error;
+    }
+  }
+
+  private async loadVADModel(): Promise<void> {
+    try {
+      this.emit('modelLoadingStart', 'vad');
+      
+      // Load real VAD model
+      const { PyannoteVAD } = await import('./models/VADModelReal');
+      this.models.vad = new PyannoteVAD('cpu', undefined, undefined, {
+        vad_onset: this.config.vadThreshold,
+        vad_offset: this.config.vadThreshold * 0.7
+      });
+      
+      this.modelStates.vad = 'loaded';
+      this.emit('modelLoaded', 'vad');
+      
+    } catch (error) {
+      this.modelStates.vad = 'error';
+      this.emit('modelError', 'vad', error);
+      throw error;
+    }
+  }
+
+  private async loadWhisperModel(): Promise<void> {
+    try {
+      this.emit('modelLoadingStart', 'whisper');
+      
+      // Load FasterWhisperPipeline
+      const { FasterWhisperPipeline } = await import('./models/FasterWhisperModel');
+      this.models.whisper = new FasterWhisperPipeline(
+        this.config.whisperModel,
+        'cpu',
+        1024,
+        1,
+        false,
+        false,
+        {}
+      );
+      
+      // Ensure the model is actually initialized
+      if (this.models.whisper.ensureInitialized) {
+        await this.models.whisper.ensureInitialized();
+      }
+      
+      this.modelStates.whisper = 'loaded';
+      this.emit('modelLoaded', 'whisper');
+      
+    } catch (error) {
+      this.modelStates.whisper = 'error';
+      this.emit('modelError', 'whisper', error);
+      throw error;
+    }
+  }
+
+  private async loadAlignmentModel(): Promise<void> {
+    try {
+      this.emit('modelLoadingStart', 'alignment');
+      
+      // Map simple names to browser-compatible Xenova repos
+      const mapAlignmentToHF = (name: string): string => {
+        switch (name) {
+          case 'wav2vec2-large':
+            return 'Xenova/wav2vec2-large-960h-lv60';
+          case 'wav2vec2-base':
+          default:
+            return 'Xenova/wav2vec2-base-960h';
+        }
+      };
+      const resolvedModel = mapAlignmentToHF(this.config.alignmentModel);
+
+      // Load real alignment model
+      const { AlignmentModel } = await import('./models/AlignmentModelReal');
+      this.models.alignment = new AlignmentModel();
+      
+      await this.models.alignment.loadAlignModel('en', 'cpu', resolvedModel);
+
+      this.modelStates.alignment = 'loaded';
+      this.emit('modelLoaded', 'alignment');
+      
+    } catch (error) {
+      this.modelStates.alignment = 'error';
+      this.emit('modelError', 'alignment', error as any);
+      // Fail-soft: do not throw; continue without alignment
+    }
+  }
+
+  private async loadDiarizationModel(): Promise<void> {
+    try {
+      this.emit('modelLoadingStart', 'diarization');
+      
+      // Load speaker diarization model
+      const { DiarizationModel } = await import('./models/DiarizationModel');
+      this.models.diarization = new DiarizationModel({
+        modelName: this.config.diarizationModel
+      });
+      
+      await this.models.diarization.initialize();
+      
+      this.modelStates.diarization = 'loaded';
+      this.emit('modelLoaded', 'diarization');
+      
+    } catch (error) {
+      this.modelStates.diarization = 'error';
+      this.emit('modelError', 'diarization', error as any);
+      // Fail-soft: do not throw; continue without diarization
+    }
+  }
+
+  async processAudio(audioChunk: AudioChunk): Promise<TranscriptionResult> {
+    if (!this.state.isInitialized) {
+      throw new WhisperXError('Engine not initialized', 'NOT_INITIALIZED', 'transcription');
+    }
+
+    this.state.isProcessing = true;
+    const startTime = performance.now();
+    const audioDuration = audioChunk.duration ?? (audioChunk.data.length / audioChunk.sampleRate);
+    
+    try {
+      this.emit('processingStart', audioDuration);
+      
+      // Real WhisperX pipeline: use FasterWhisperPipeline.transcribe()
+      const transcriptionResult = await this.models.whisper.transcribe(
+        audioChunk.data,
+        this.config.batchSize,
+        'en',
+        'transcribe',
+        this.config.chunkLength,
+        false, // print_progress
+        false, // combined_progress
+        false  // verbose
+      );
+
+      // Step 2: Forced Alignment using transliterated alignment model
+      let alignmentResult: any = null;
+      if (this.config.enableAlignment && this.models.alignment) {
+        alignmentResult = await this.models.alignment.align(
+          transcriptionResult.segments,
+          audioChunk.data,
+          'cpu',
+          'nearest',
+          false, // return_char_alignments
+          false, // print_progress
+          false  // combined_progress
+        );
+      }
+
+      // Combine results into expected format
+      const result: TranscriptionResult = {
+        text: transcriptionResult.segments.map((s: any) => s.text).join(' '),
+        words: alignmentResult?.word_segments || [],
+        speakers: [], // Would add diarization results here
+        language: transcriptionResult.language,
+        duration: audioDuration
+      };
+
+      const totalTime = performance.now() - startTime;
+      this.state.performance = {
+        processingTime: totalTime,
+        realTimeFactor: totalTime / 1000 / audioDuration,
+        memoryUsage: this.getMemoryUsage()
+      };
+
+      this.emit('processingComplete', result);
+      return result;
+
+    } catch (error) {
+      this.emit('error', new WhisperXError(
+        `Processing failed: ${error}`,
+        'PROCESSING_FAILED',
+        'transcription'
+      ));
+      throw error;
+    } finally {
+      this.state.isProcessing = false;
+    }
+  }
+
+  async startRealtime(): Promise<void> {
+    if (!this.state.isInitialized) {
+      throw new WhisperXError('Engine not initialized', 'NOT_INITIALIZED', 'transcription');
+    }
+
+    if (this.state.isListening) {
+      console.warn('Already listening');
+      return;
+    }
+
+    try {
+      console.log('Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: this.config.sampleRate,
+          channelCount: this.config.channels,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      
+      console.log('Microphone access granted');
+      this.state.isListening = true;
+      this.emit('realtimeStart');
+      
+      await this.processRealtimeStream(stream);
+      
+    } catch (error) {
+      this.state.isListening = false;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Failed to start realtime:', errorMessage);
+      
+      if (errorMessage.includes('Permission denied') || errorMessage.includes('NotAllowedError')) {
+        this.emit('error', new WhisperXError(
+          'Microphone permission denied. Please allow microphone access.',
+          'PERMISSION_DENIED',
+          'transcription'
+        ));
+      } else {
+        this.emit('error', new WhisperXError(
+          `Real-time processing failed: ${errorMessage}`,
+          'REALTIME_FAILED',
+          'transcription'
+        ));
+      }
+      throw error;
+    }
+  }
+
+  private async processRealtimeStream(stream: MediaStream): Promise<void> {
+    if (!this.audioContext) {
+      console.error('No audio context available');
+      return;
+    }
+
+    try {
+      const source = this.audioContext.createMediaStreamSource(stream);
+      
+      // Use createScriptProcessor as fallback (deprecated but still works)
+      // Note: AudioWorklet would be better but requires more setup
+      const bufferSize = 4096; // Must be power of 2: 256, 512, 1024, 2048, 4096, 8192, 16384
+      const processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+      this.realtimeProcessor = processor;
+      this.realtimeStream = stream;
+
+      const audioBuffer: Float32Array[] = this.realtimeBuffer;
+      const chunkSizeInSamples = this.config.chunkLength * this.config.sampleRate;
+      
+      console.log(`Audio processor initialized. Buffer size: ${bufferSize}, Chunk size: ${this.config.chunkLength}s (${chunkSizeInSamples} samples)`);
+      
+      let isProcessing = false;
+      
+      processor.onaudioprocess = (event) => {
+        if (!this.state.isListening) return;
+        
+        const inputData = event.inputBuffer.getChannelData(0);
+        const chunk = new Float32Array(inputData);
+        audioBuffer.push(chunk);
+        
+        // Update audio level for UI
+        const level = this.calculateAudioLevel(chunk);
+        this.state.audioLevel = level;
+        this.emit('audioLevel', level);
+        
+        // Process when we have enough audio and not already processing
+        const totalSamples = audioBuffer.reduce((sum, buf) => sum + buf.length, 0);
+        if (totalSamples >= chunkSizeInSamples && !isProcessing) {
+          isProcessing = true;
+          const combinedAudio = this.combineAudioBuffers(audioBuffer);
+          audioBuffer.length = 0; // Clear buffer
+          
+          console.log(`Processing audio chunk: ${combinedAudio.length} samples (${(combinedAudio.length / this.config.sampleRate).toFixed(2)}s)`);
+          
+          const audioChunk: AudioChunk = {
+            data: combinedAudio,
+            timestamp: Date.now(),
+            sampleRate: this.config.sampleRate,
+            channels: this.config.channels,
+            duration: combinedAudio.length / this.config.sampleRate
+          };
+          
+          // Publish audioChunk for consumers (e.g., waveform UI)
+          this.emit('audioChunk', audioChunk);
+
+          // Process in background to avoid blocking audio
+          this.processAudio(audioChunk)
+            .catch(error => {
+              console.error('Audio processing error:', error);
+              this.emit('error', error);
+            })
+            .finally(() => {
+              isProcessing = false;
+            });
+        }
+      };
+      
+      source.connect(processor);
+      processor.connect(this.audioContext.destination);
+      
+      console.log('Audio pipeline connected successfully');
+    } catch (error) {
+      console.error('Error setting up realtime stream processing:', error);
+      this.emit('error', new WhisperXError(
+        'Failed to set up realtime audio processing',
+        'REALTIME_SETUP_FAILED',
+        'transcription'
+      ));
+      throw error;
+    }
+  }
+
+  stopRealtime(): void {
+    this.state.isListening = false;
+    this.state.audioLevel = 0;
+    // Flush any remaining audio as a final chunk
+    try {
+      const remainingSamples = this.realtimeBuffer.reduce((s, b) => s + b.length, 0);
+      if (remainingSamples > 0) {
+        const combined = this.combineAudioBuffers(this.realtimeBuffer);
+        this.realtimeBuffer.length = 0;
+        const audioChunk: AudioChunk = {
+          data: combined,
+          timestamp: Date.now(),
+          sampleRate: this.config.sampleRate,
+          channels: this.config.channels,
+          duration: combined.length / this.config.sampleRate
+        };
+        this.emit('audioChunk', audioChunk);
+        // Fire and forget
+        this.processAudio(audioChunk).catch(err => this.emit('error', err));
+      }
+    } catch {
+      // ignore flush errors
+    }
+    // Disconnect processor and stop stream
+    try { this.realtimeProcessor?.disconnect(); } catch {}
+    this.realtimeProcessor = null;
+    try {
+      if (this.realtimeStream) {
+        for (const track of this.realtimeStream.getTracks()) track.stop();
+      }
+    } catch {}
+    this.realtimeStream = null;
+     this.emit('realtimeStop');
+  }
+
+  private calculateAudioLevel(audioData: Float32Array): number {
+    let sum = 0;
+    for (let i = 0; i < audioData.length; i++) {
+      sum += audioData[i] * audioData[i];
+    }
+    return Math.sqrt(sum / audioData.length);
+  }
+
+  private combineAudioBuffers(buffers: Float32Array[]): Float32Array {
+    const totalLength = buffers.reduce((sum, buf) => sum + buf.length, 0);
+    const combined = new Float32Array(totalLength);
+    let offset = 0;
+    
+    for (const buffer of buffers) {
+      combined.set(buffer, offset);
+      offset += buffer.length;
+    }
+    
+    return combined;
+  }
+
+  private getMemoryUsage(): number {
+    // Estimate memory usage (simplified)
+    if ('memory' in performance) {
+      return (performance as any).memory.usedJSHeapSize / 1024 / 1024; // MB
+    }
+    return 0;
+  }
+
+  // Getters
+  get currentState(): WhisperXState {
+    return { ...this.state };
+  }
+
+  get currentConfig(): WhisperXConfig {
+    return { ...this.config };
+  }
+
+  get modelLoadingStates(): ModelLoadingState {
+    return { ...this.modelStates };
+  }
+
+  // Configuration updates
+  updateConfig(newConfig: Partial<WhisperXConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+    this.emit('configUpdated', this.config);
+  }
+
+  // Cleanup
+  dispose(): void {
+    this.stopRealtime();
+    
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
+    
+    // Dispose models
+    Object.values(this.models).forEach(model => {
+      if (model && typeof model.dispose === 'function') {
+        model.dispose();
+      }
+    });
+    
+    this.models = {};
+    this.state.isInitialized = false;
+    this.emit('disposed');
+  }
+}
