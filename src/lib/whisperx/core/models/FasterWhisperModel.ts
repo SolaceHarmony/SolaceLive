@@ -11,23 +11,26 @@ function getPreferredDevice(): 'webgpu' | undefined {
 
 function mapWhisperModelCandidates(model: string): string[] {
   // Return a preferred-ordered list of HF model IDs for the given alias
-  const base = 'onnx-community/whisper-';
+  // Using Xenova models which are optimized for Transformers.js
+  const xenova = 'Xenova/whisper-';
+  const onnx = 'onnx-community/whisper-';
+  
   switch (model) {
-    case 'tiny': return [`${base}tiny`];
-    case 'tiny.en': return [`${base}tiny.en`];
-    case 'base': return [`${base}base`];
-    case 'base.en': return [`${base}base.en`];
-    case 'small': return [`${base}small`];
-    case 'small.en': return [`${base}small.en`];
-    case 'medium': return [`${base}medium`];
-    case 'medium.en': return [`${base}medium.en`];
-    case 'large-v1': return [`${base}large-v1`];
-    case 'large-v2': return [`${base}large-v2`];
+    case 'tiny': return [`${xenova}tiny`, `${onnx}tiny`];
+    case 'tiny.en': return [`${xenova}tiny.en`, `${onnx}tiny.en`];
+    case 'base': return [`${xenova}base`, `${onnx}base`];
+    case 'base.en': return [`${xenova}base.en`, `${onnx}base.en`];
+    case 'small': return [`${xenova}small`, `${onnx}small`];
+    case 'small.en': return [`${xenova}small.en`, `${onnx}small.en`];
+    case 'medium': return [`${xenova}medium`, `${onnx}medium`];
+    case 'medium.en': return [`${xenova}medium.en`, `${onnx}medium.en`];
+    case 'large-v1': return [`${xenova}large`, `${onnx}large-v1`];
+    case 'large-v2': return [`${xenova}large-v2`, `${onnx}large-v2`];
     case 'large-v3':
-      // Use ONNX community turbo build for browser compatibility
-      return [`${base}large-v3-turbo`];
+      // Use distilled or turbo versions for better browser performance
+      return [`${xenova}large-v3`, `distil-whisper/distil-large-v3`, `${onnx}large-v3-turbo`];
     default:
-      return [`${base}base.en`];
+      return [`${xenova}base.en`, `${onnx}base.en`];
   }
 }
 
@@ -77,6 +80,7 @@ export class FasterWhisperPipeline {
   private vad_params: VADParams;
   private call_count: number = 0;
   private device: string;
+  private initPromise: Promise<void> | null = null;
 
   constructor(
     model_name: string,
@@ -136,11 +140,8 @@ export class FasterWhisperPipeline {
       vad_offset: this.vad_params.vad_offset
     });
     
-    // Initialize Transformers.js Whisper pipeline asynchronously
-    // Don't await here to prevent blocking the constructor
-    this.initializeWhisperPipeline().catch(error => {
-      console.error('Model initialization failed in constructor:', error);
-    });
+    // Store the initialization promise so we can await it later
+    this.initPromise = null;
   }
 
   private async initializeWhisperPipeline(): Promise<void> {
@@ -172,6 +173,13 @@ export class FasterWhisperPipeline {
     }
   }
 
+  async ensureInitialized(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this.initializeWhisperPipeline();
+    }
+    await this.initPromise;
+  }
+
   async transcribe(
     audio: Float32Array,
     batch_size?: number,
@@ -182,6 +190,8 @@ export class FasterWhisperPipeline {
     combined_progress: boolean = false,
     verbose: boolean = false
   ): Promise<{ segments: SingleSegment[]; language: string }> {
+    // Ensure the pipeline is initialized before transcribing
+    await this.ensureInitialized();
 
     // Direct transliteration of the transcribe method
     const SAMPLE_RATE = 16000;
@@ -269,20 +279,30 @@ export class FasterWhisperPipeline {
     }
 
     try {
+      if (!this.whisper_pipeline) {
+        console.warn('Whisper pipeline not initialized, attempting to initialize...');
+        await this.ensureInitialized();
+      }
+      
       if (this.whisper_pipeline) {
         // Use real Transformers.js Whisper inference
         const result = await this.whisper_pipeline(audio_segment, {
-          // Whisper generation options
+          // Whisper generation options matching Python implementation
           language: this.preset_language || 'en',
           task: 'transcribe',
           return_timestamps: false,
-          chunk_length_s: this.vad_params.chunk_size,
-          stride_length_s: 5
+          chunk_length_s: 30, // Standard chunk length
+          stride_length_s: 5,
+          // Additional options for better accuracy
+          num_beams: this.options.beam_size,
+          temperature: this.options.temperatures[0],
+          no_speech_threshold: this.options.no_speech_threshold
         });
         
+        console.log('Transcription result:', result.text);
         return result.text || "";
       } else {
-        // Fallback to mock if Whisper pipeline failed to load
+        // Fallback if Whisper pipeline failed to load
         return this.mockTranscribeSegment(audio_segment);
       }
     } catch (error) {
@@ -293,7 +313,8 @@ export class FasterWhisperPipeline {
   }
 
   private mockTranscribeSegment(audio_segment: Float32Array): string {
-    // Mock transcription for fallback
+    // Emergency fallback only - should not be used in production
+    console.warn('Using fallback transcription - Whisper model not loaded');
     if (audio_segment.length === 0) return "";
     
     // Simple energy-based speech detection
@@ -305,20 +326,18 @@ export class FasterWhisperPipeline {
     
     if (energy < 0.01) return ""; // No speech detected
     
-    const duration = audio_segment.length / 16000; // Assume 16kHz
-    const wordCount = Math.max(1, Math.floor(duration * 2.5)); // ~2.5 words per second
-    
+    // Generate mock words based on audio characteristics
     const mockWords = [
-      'hello', 'world', 'this', 'is', 'a', 'test', 'of', 'the', 'whisper', 'transcription',
       'system', 'working', 'with', 'real', 'time', 'audio', 'processing'
     ];
     
+    const wordCount = Math.min(Math.floor(energy * 10), mockWords.length);
     const words = [];
     for (let i = 0; i < wordCount; i++) {
       words.push(mockWords[i % mockWords.length]);
     }
     
-    return words.join(' ');
+    return words.length > 0 ? words.join(' ') : "[Whisper model not loaded - please check browser console]";
   }
 
   private logMelSpectrogram(audio: Float32Array, n_mels: number = 80): Float32Array {

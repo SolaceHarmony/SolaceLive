@@ -35,7 +35,7 @@ export class WhisperXEngine extends EventEmitter {
       
       // Performance defaults
       batchSize: 16,
-      chunkLength: 30,
+      chunkLength: 5,
       vadThreshold: 0.5,
       alignmentThreshold: 0.7,
       
@@ -76,35 +76,43 @@ export class WhisperXEngine extends EventEmitter {
   async initialize(): Promise<void> {
     try {
       this.emit('initializationStart');
+      console.log('Initializing WhisperX Engine...');
       
       // Initialize audio context
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
         sampleRate: this.config.sampleRate
       });
+      console.log(`Audio context created with sample rate: ${this.config.sampleRate}`);
 
       // Load models concurrently
       const loadPromises: Promise<void>[] = [];
       
       if (this.config.enableVAD) {
+        console.log('Loading VAD model...');
         loadPromises.push(this.loadVADModel());
       }
       
+      console.log('Loading Whisper model...');
       loadPromises.push(this.loadWhisperModel());
       
       if (this.config.enableAlignment) {
+        console.log('Loading Alignment model...');
         loadPromises.push(this.loadAlignmentModel());
       }
       
       if (this.config.enableDiarization) {
+        console.log('Loading Diarization model...');
         loadPromises.push(this.loadDiarizationModel());
       }
 
       await Promise.all(loadPromises);
       
       this.state.isInitialized = true;
+      console.log('WhisperX Engine initialized successfully');
       this.emit('initialized');
       
     } catch (error) {
+      console.error('WhisperX Engine initialization failed:', error);
       this.emit('error', new WhisperXError(
         `Initialization failed: ${error}`,
         'INIT_FAILED',
@@ -150,6 +158,11 @@ export class WhisperXEngine extends EventEmitter {
         false,
         {}
       );
+      
+      // Ensure the model is actually initialized
+      if (this.models.whisper.ensureInitialized) {
+        await this.models.whisper.ensureInitialized();
+      }
       
       this.modelStates.whisper = 'loaded';
       this.emit('modelLoaded', 'whisper');
@@ -289,10 +302,13 @@ export class WhisperXEngine extends EventEmitter {
       throw new WhisperXError('Engine not initialized', 'NOT_INITIALIZED', 'transcription');
     }
 
-    this.state.isListening = true;
-    this.emit('realtimeStart');
-    
+    if (this.state.isListening) {
+      console.warn('Already listening');
+      return;
+    }
+
     try {
+      console.log('Requesting microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: this.config.sampleRate,
@@ -302,69 +318,115 @@ export class WhisperXEngine extends EventEmitter {
           autoGainControl: true
         }
       });
-
+      
+      console.log('Microphone access granted');
+      this.state.isListening = true;
+      this.emit('realtimeStart');
+      
       await this.processRealtimeStream(stream);
       
     } catch (error) {
       this.state.isListening = false;
-      this.emit('error', new WhisperXError(
-        `Real-time processing failed: ${error}`,
-        'REALTIME_FAILED',
-        'transcription'
-      ));
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Failed to start realtime:', errorMessage);
+      
+      if (errorMessage.includes('Permission denied') || errorMessage.includes('NotAllowedError')) {
+        this.emit('error', new WhisperXError(
+          'Microphone permission denied. Please allow microphone access.',
+          'PERMISSION_DENIED',
+          'transcription'
+        ));
+      } else {
+        this.emit('error', new WhisperXError(
+          `Real-time processing failed: ${errorMessage}`,
+          'REALTIME_FAILED',
+          'transcription'
+        ));
+      }
       throw error;
     }
   }
 
   private async processRealtimeStream(stream: MediaStream): Promise<void> {
-    if (!this.audioContext) return;
+    if (!this.audioContext) {
+      console.error('No audio context available');
+      return;
+    }
 
-    const source = this.audioContext.createMediaStreamSource(stream);
-    const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-    this.realtimeProcessor = processor;
-    this.realtimeStream = stream;
+    try {
+      const source = this.audioContext.createMediaStreamSource(stream);
+      
+      // Use createScriptProcessor as fallback (deprecated but still works)
+      // Note: AudioWorklet would be better but requires more setup
+      const bufferSize = 4096; // Must be power of 2: 256, 512, 1024, 2048, 4096, 8192, 16384
+      const processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+      this.realtimeProcessor = processor;
+      this.realtimeStream = stream;
 
-    const audioBuffer: Float32Array[] = this.realtimeBuffer;
-    const chunkSizeInSamples = this.config.chunkLength * this.config.sampleRate;
-    
-    processor.onaudioprocess = async (event) => {
-      if (!this.state.isListening) return;
+      const audioBuffer: Float32Array[] = this.realtimeBuffer;
+      const chunkSizeInSamples = this.config.chunkLength * this.config.sampleRate;
       
-      const inputData = event.inputBuffer.getChannelData(0);
-      const chunk = new Float32Array(inputData);
-      audioBuffer.push(chunk);
+      console.log(`Audio processor initialized. Buffer size: ${bufferSize}, Chunk size: ${this.config.chunkLength}s (${chunkSizeInSamples} samples)`);
       
-      // Update audio level for UI
-      const level = this.calculateAudioLevel(chunk);
-      this.state.audioLevel = level;
-      this.emit('audioLevel', level);
+      let isProcessing = false;
       
-      // Process when we have enough audio
-      const totalSamples = audioBuffer.reduce((sum, buf) => sum + buf.length, 0);
-      if (totalSamples >= chunkSizeInSamples) {
-        const combinedAudio = this.combineAudioBuffers(audioBuffer);
-        audioBuffer.length = 0; // Clear buffer
+      processor.onaudioprocess = (event) => {
+        if (!this.state.isListening) return;
         
-        const audioChunk: AudioChunk = {
-          data: combinedAudio,
-          timestamp: Date.now(),
-          sampleRate: this.config.sampleRate,
-          channels: this.config.channels,
-          duration: combinedAudio.length / this.config.sampleRate
-        };
+        const inputData = event.inputBuffer.getChannelData(0);
+        const chunk = new Float32Array(inputData);
+        audioBuffer.push(chunk);
         
-        // Publish audioChunk for consumers (e.g., waveform UI)
-        this.emit('audioChunk', audioChunk);
+        // Update audio level for UI
+        const level = this.calculateAudioLevel(chunk);
+        this.state.audioLevel = level;
+        this.emit('audioLevel', level);
+        
+        // Process when we have enough audio and not already processing
+        const totalSamples = audioBuffer.reduce((sum, buf) => sum + buf.length, 0);
+        if (totalSamples >= chunkSizeInSamples && !isProcessing) {
+          isProcessing = true;
+          const combinedAudio = this.combineAudioBuffers(audioBuffer);
+          audioBuffer.length = 0; // Clear buffer
+          
+          console.log(`Processing audio chunk: ${combinedAudio.length} samples (${(combinedAudio.length / this.config.sampleRate).toFixed(2)}s)`);
+          
+          const audioChunk: AudioChunk = {
+            data: combinedAudio,
+            timestamp: Date.now(),
+            sampleRate: this.config.sampleRate,
+            channels: this.config.channels,
+            duration: combinedAudio.length / this.config.sampleRate
+          };
+          
+          // Publish audioChunk for consumers (e.g., waveform UI)
+          this.emit('audioChunk', audioChunk);
 
-        // Process in background to avoid blocking audio
-        this.processAudio(audioChunk).catch(error => {
-          this.emit('error', error);
-        });
-      }
-    };
-    
-    source.connect(processor);
-    processor.connect(this.audioContext.destination);
+          // Process in background to avoid blocking audio
+          this.processAudio(audioChunk)
+            .catch(error => {
+              console.error('Audio processing error:', error);
+              this.emit('error', error);
+            })
+            .finally(() => {
+              isProcessing = false;
+            });
+        }
+      };
+      
+      source.connect(processor);
+      processor.connect(this.audioContext.destination);
+      
+      console.log('Audio pipeline connected successfully');
+    } catch (error) {
+      console.error('Error setting up realtime stream processing:', error);
+      this.emit('error', new WhisperXError(
+        'Failed to set up realtime audio processing',
+        'REALTIME_SETUP_FAILED',
+        'transcription'
+      ));
+      throw error;
+    }
   }
 
   stopRealtime(): void {

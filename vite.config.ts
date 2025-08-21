@@ -16,6 +16,12 @@ export default defineConfig({
         target: 'http://localhost:8787',
         changeOrigin: true,
       },
+      // WebSocket proxy to Moshi TypeScript server
+      '/moshi': {
+        target: 'ws://localhost:8088',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 })

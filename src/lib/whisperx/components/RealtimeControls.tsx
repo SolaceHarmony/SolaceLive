@@ -68,8 +68,9 @@ export const RealtimeControls: React.FC<RealtimeControlsProps> = ({
       } else {
         await whisperX.startRealtime();
       }
-    } catch {
-      // no-op in production
+    } catch (error) {
+      console.error('Failed to toggle recording:', error);
+      // The error will be displayed through the error state
     }
   };
 
@@ -80,8 +81,8 @@ export const RealtimeControls: React.FC<RealtimeControlsProps> = ({
   const handleResume = async () => {
     try {
       await whisperX.resume();
-    } catch {
-      // no-op in production
+    } catch (error) {
+      console.error('Failed to resume recording:', error);
     }
   };
 

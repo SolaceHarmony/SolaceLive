@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Recording Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .record-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .record-btn:hover {
+            background-color: #45a049;
+        }
+        .record-btn.recording {
+            background-color: #f44336;
+        }
+        .record-btn.recording:hover {
+            background-color: #da190b;
+        }
+        .play-btn {
+            background-color: #2196F3;
+            color: white;
+        }
+        .play-btn:hover {
+            background-color: #0b7dda;
+        }
+        .play-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #e7f3ff;
+            color: #333;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .audio-level {
+            width: 100%;
+            height: 30px;
+            background-color: #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .audio-level-bar {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.1s;
+        }
+        #audioPlayer {
+            width: 100%;
+            margin: 20px 0;
+        }
+        .info {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Audio Recording Test</h1>
+        
+        <div class="info">
+            <strong>Instructions:</strong>
+            <ul>
+                <li>Click "Start Recording" to begin recording audio</li>
+                <li>Grant microphone permission when prompted</li>
+                <li>Speak into your microphone</li>
+                <li>Watch the audio level indicator</li>
+                <li>Click "Stop Recording" when done</li>
+                <li>Use "Play Recording" to hear the recorded audio</li>
+            </ul>
+        </div>
+        
+        <div class="controls">
+            <button id="recordBtn" class="record-btn">Start Recording</button>
+            <button id="playBtn" class="play-btn" disabled>Play Recording</button>
+        </div>
+        
+        <div id="status" class="status">Ready to record</div>
+        
+        <div class="audio-level">
+            <div id="audioLevelBar" class="audio-level-bar"></div>
+        </div>
+        
+        <audio id="audioPlayer" controls style="display: none;"></audio>
+        
+        <div id="debugInfo" style="margin-top: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 5px; font-family: monospace; font-size: 12px;"></div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        let stream;
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let animationId;
+        
+        const recordBtn = document.getElementById('recordBtn');
+        const playBtn = document.getElementById('playBtn');
+        const statusDiv = document.getElementById('status');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const audioLevelBar = document.getElementById('audioLevelBar');
+        const debugInfo = document.getElementById('debugInfo');
+        
+        function updateDebugInfo(info) {
+            const timestamp = new Date().toLocaleTimeString();
+            debugInfo.innerHTML = `<strong>[${timestamp}]</strong> ${info}<br>` + debugInfo.innerHTML;
+            // Keep only last 10 messages
+            const lines = debugInfo.innerHTML.split('<br>');
+            if (lines.length > 10) {
+                debugInfo.innerHTML = lines.slice(0, 10).join('<br>');
+            }
+        }
+        
+        function updateStatus(message, className = '') {
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + className;
+            updateDebugInfo(message);
+        }
+        
+        function updateAudioLevel() {
+            if (!analyser) return;
+            
+            analyser.getByteFrequencyData(dataArray);
+            const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+            const percentage = (average / 255) * 100;
+            audioLevelBar.style.width = percentage + '%';
+            
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                animationId = requestAnimationFrame(updateAudioLevel);
+            }
+        }
+        
+        async function startRecording() {
+            try {
+                updateStatus('Requesting microphone access...', '');
+                updateDebugInfo('Checking browser compatibility...');
+                
+                // Check browser compatibility
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Your browser does not support audio recording');
+                }
+                
+                // Request microphone access
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 44100
+                    } 
+                });
+                
+                updateDebugInfo(`Got audio stream with ${stream.getAudioTracks().length} tracks`);
+                
+                // Setup audio analysis
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+                analyser.fftSize = 256;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                updateDebugInfo(`Audio context sample rate: ${audioContext.sampleRate}Hz`);
+                
+                // Setup MediaRecorder
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+                updateDebugInfo(`Using MIME type: ${mimeType}`);
+                
+                mediaRecorder = new MediaRecorder(stream, { mimeType });
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                        updateDebugInfo(`Received audio chunk: ${event.data.size} bytes`);
+                    }
+                };
+                
+                mediaRecorder.onstop = () => {
+                    updateDebugInfo('Recording stopped, processing audio...');
+                    const audioBlob = new Blob(audioChunks, { type: mimeType });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    audioPlayer.src = audioUrl;
+                    audioPlayer.style.display = 'block';
+                    playBtn.disabled = false;
+                    updateStatus('Recording complete! Size: ' + (audioBlob.size / 1024).toFixed(2) + ' KB', 'success');
+                    updateDebugInfo(`Final audio blob size: ${audioBlob.size} bytes`);
+                };
+                
+                mediaRecorder.onerror = (event) => {
+                    updateStatus('Recording error: ' + event.error, 'error');
+                    updateDebugInfo('MediaRecorder error: ' + JSON.stringify(event.error));
+                };
+                
+                mediaRecorder.start(100); // Collect data every 100ms
+                updateStatus('Recording... Speak into your microphone', 'success');
+                updateDebugInfo('MediaRecorder started successfully');
+                
+                recordBtn.textContent = 'Stop Recording';
+                recordBtn.classList.add('recording');
+                
+                // Start audio level monitoring
+                updateAudioLevel();
+                
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                updateStatus('Error: ' + error.message, 'error');
+                updateDebugInfo('Error details: ' + error.stack);
+                
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    updateStatus('Microphone permission denied. Please allow microphone access and try again.', 'error');
+                } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                    updateStatus('No microphone found. Please connect a microphone and try again.', 'error');
+                } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                    updateStatus('Microphone is already in use by another application.', 'error');
+                }
+            }
+        }
+        
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                updateDebugInfo('Stopping MediaRecorder...');
+            }
+            
+            if (stream) {
+                stream.getTracks().forEach(track => {
+                    track.stop();
+                    updateDebugInfo(`Stopped track: ${track.kind}`);
+                });
+            }
+            
+            if (audioContext) {
+                audioContext.close();
+                updateDebugInfo('Audio context closed');
+            }
+            
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            
+            recordBtn.textContent = 'Start Recording';
+            recordBtn.classList.remove('recording');
+            audioLevelBar.style.width = '0%';
+        }
+        
+        recordBtn.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        });
+        
+        playBtn.addEventListener('click', () => {
+            if (audioPlayer.src) {
+                audioPlayer.play();
+                updateStatus('Playing recording...', '');
+            }
+        });
+        
+        // Initial browser check
+        window.addEventListener('load', () => {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                updateStatus('Your browser does not support audio recording', 'error');
+                recordBtn.disabled = true;
+            } else {
+                updateDebugInfo('Browser supports getUserMedia API');
+                updateDebugInfo(`User Agent: ${navigator.userAgent}`);
+            }
+        });
+    </script>
+</body>
+</html>

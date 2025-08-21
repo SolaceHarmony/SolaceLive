@@ -3,10 +3,13 @@ import cors from 'cors';
 import multer from 'multer';
 import { pipeline, read_audio } from '@huggingface/transformers';
 import { decode as decodeWav } from 'node-wav';
+import { logger, logInfo, logError, logWarn, withLogging } from './logger.js';
 
 const app = express();
 const port = process.env.PORT || 8787;
 
+// Add request logging
+app.use(logger.requestLogger());
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
@@ -18,7 +21,15 @@ function getPreferredDevice() {
 
 // Health
 app.get('/health', (req, res) => {
+  logInfo('health', 'Health check requested');
   res.json({ ok: true, device: getPreferredDevice() || 'auto' });
+});
+
+// Logs endpoint for frontend logging
+app.post('/api/logs', express.json(), (req, res) => {
+  const { level, component, message, data, error } = req.body;
+  logInfo('client', `[${component}] ${message}`, data);
+  res.json({ ok: true });
 });
 
 // Embeddings
@@ -41,7 +52,7 @@ app.post('/api/embeddings', async (req, res) => {
 
     res.json({ embeddings: out });
   } catch (err) {
-    console.error('embeddings error', err);
+    logError('embeddings', 'Failed to generate embeddings', { modelId: req.body?.modelId }, err);
     res.status(500).json({ error: String(err) });
   }
 });
