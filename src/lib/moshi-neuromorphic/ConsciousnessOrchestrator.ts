@@ -130,10 +130,12 @@ export class ConsciousnessOrchestrator {
       this.updateWorkingMemory(winner.sourceAS.id, boundPackets);
       
       // 7. Apply Hebbian learning to strengthen successful paths
- this.hebbian.updateWeights(winner, []); // Use updateWeights with winner and empty losers array
+      this.hebbian.updateWeights(winner, []); // Use updateWeights with winner and empty losers array
       this.metrics.hebbianUpdates++;
- // Note: A more complete implementation would get losers from ThoughtRacer
+      // Note: A more complete implementation would get losers from ThoughtRacer
+      
       // 8. Update consciousness state based on processing
+      const pathStrength = winner.amplitude; // Use packet amplitude as proxy for path strength
       this.updateConsciousnessState(winner, pathStrength);
     }
     
