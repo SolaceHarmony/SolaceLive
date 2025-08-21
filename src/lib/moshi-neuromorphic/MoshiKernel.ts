@@ -1,6 +1,6 @@
 // src/lib/moshi-neuromorphic/MoshiKernel.ts
 
-import { NeuralPacket, PacketType } from '../neuromorphic-research/neural-packet-types';
+import { NeuralPacket, PacketType, MoshiToken } from '../neuromorphic-research/neural-packet-types';
 import { ThoughtRacer } from '../neuromorphic-research/thought-racer';
 import { GammaOscillator } from '../neuromorphic-research/gamma-oscillator';
 import { AttentionMechanism } from '../neuromorphic-research/attention-mechanism';
@@ -17,7 +17,7 @@ export class MoshiKernel {
   /**
    * Convert Moshi tokens to NeuralPackets
    */
-  private tokenToPacket(token: { value?: string; probability?: number; logits?: number[]; attentionWeights?: number[] }, streamId: string): NeuralPacket {
+  private tokenToPacket(token: MoshiToken, streamId: string): NeuralPacket {
     return {
       id: crypto.randomUUID(),
       type: PacketType.INFERENCE,
