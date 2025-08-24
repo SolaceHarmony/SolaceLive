@@ -44,6 +44,8 @@ export enum Priority {
   LOW = 3
 }
 
+export type JsonRecord = Record<string, unknown>;
+
 export interface Packet {
   type: PacketType;
   priority: Priority;
@@ -51,6 +53,14 @@ export interface Packet {
   timestamp: number;
   data: Uint8Array;
   requiresAck?: boolean;
+}
+
+export interface PacketStats {
+  packetsSent: number;
+  packetsReceived: number;
+  packetsDropped: number;
+  averageLatency: number;
+  totalLatency: number;
 }
 
 export class PacketCodec {
@@ -77,7 +87,7 @@ export class PacketCodec {
       timestamp: v.getFloat64(6, true),
       data: data.slice(17),
       requiresAck: v.getUint8(16) === 1,
-    };
+    } as Packet;
   }
 }
 
@@ -98,7 +108,7 @@ export class PacketWebSocket extends EventEmitter {
   private expected = 0;
   private procTimer: number | null = null;
   private hbTimer: number | null = null;
-  private stats = { packetsSent: 0, packetsReceived: 0, packetsDropped: 0, averageLatency: 0, totalLatency: 0 };
+  private stats: PacketStats = { packetsSent: 0, packetsReceived: 0, packetsDropped: 0, averageLatency: 0, totalLatency: 0 };
   private readonly PROCESS_INTERVAL = 10;
   private readonly HEARTBEAT_MS = 5000;
   constructor(private url: string) { super(); }
@@ -110,7 +120,7 @@ export class PacketWebSocket extends EventEmitter {
         this.ws.onopen = () => { this.startLoops(); res(); };
         this.ws.onclose = () => { this.stopLoops(); this.emit('disconnect'); };
         this.ws.onerror = (e) => rej(e as unknown as Error);
-        this.ws.onmessage = (ev) => this.onMessage(ev);
+        this.ws.onmessage = (ev) => { void this.onMessage(ev); };
       } catch (e) { rej(e as unknown as Error); }
     });
   }
@@ -122,13 +132,13 @@ export class PacketWebSocket extends EventEmitter {
     const data = new TextEncoder().encode(text);
     this.sendQ.enqueue({ type: isFinal?PacketType.TEXT_FINAL:PacketType.TEXT_PARTIAL, priority: isFinal?Priority.HIGH:Priority.NORMAL, sequenceNumber: this.seq++, timestamp: Date.now(), data, requiresAck: isFinal });
   }
-  sendMetadata(meta: unknown) {
+  sendMetadata(meta: JsonRecord) {
     const data = new TextEncoder().encode(JSON.stringify(meta));
     this.sendQ.enqueue({ type: PacketType.METADATA, priority: Priority.LOW, sequenceNumber: this.seq++, timestamp: Date.now(), data, requiresAck: false });
   }
   private startLoops() {
     this.procTimer = window.setInterval(()=>{ this.flushSend(); this.flushRecv(); }, this.PROCESS_INTERVAL);
-    this.hbTimer = window.setInterval(()=>{ this.sendText('', false); }, this.HEARTBEAT_MS);
+    this.hbTimer = window.setInterval(()=>{ this.sendHeartbeat(); }, this.HEARTBEAT_MS);
   }
   private stopLoops() { if (this.procTimer) { clearInterval(this.procTimer); this.procTimer=null; } if (this.hbTimer){ clearInterval(this.hbTimer); this.hbTimer=null; } }
   private flushSend() {
@@ -142,9 +152,18 @@ export class PacketWebSocket extends EventEmitter {
   private flushRecv() {
     let n=0; const max=10; while (n<max && this.recvQ.length>0) { const pkt=this.recvQ.dequeue(); if (!pkt) break; this.dispatch(pkt); n++; }
   }
-  private onMessage(ev: MessageEvent) {
+  private async onMessage(ev: MessageEvent) {
     try {
-      const pkt = PacketCodec.decode(new Uint8Array(ev.data as ArrayBuffer));
+      let bytes: Uint8Array;
+      if (ev.data instanceof ArrayBuffer) {
+        bytes = new Uint8Array(ev.data);
+      } else if (ev.data instanceof Blob) {
+        const ab = await ev.data.arrayBuffer();
+        bytes = new Uint8Array(ab);
+      } else {
+        return; // unsupported payload
+      }
+      const pkt = PacketCodec.decode(bytes);
       const lat = Date.now() - pkt.timestamp; this.stats.totalLatency += lat; this.stats.averageLatency = this.stats.totalLatency / (this.stats.packetsReceived+1);
       if (pkt.sequenceNumber < this.expected) { if (pkt.type===PacketType.AUDIO_CHUNK) this.recvQ.enqueue(pkt); return; }
       this.recvQ.enqueue(pkt); if (pkt.sequenceNumber === this.expected) this.expected++;
@@ -157,13 +176,20 @@ export class PacketWebSocket extends EventEmitter {
       case PacketType.AUDIO_CHUNK: this.emit('audio', new Float32Array(pkt.data.buffer), pkt.timestamp); break;
       case PacketType.TEXT_PARTIAL: this.emit('textPartial', new TextDecoder().decode(pkt.data), pkt.timestamp); break;
       case PacketType.TEXT_FINAL: this.emit('textFinal', new TextDecoder().decode(pkt.data), pkt.timestamp); break;
-      case PacketType.METADATA: this.emit('metadata', JSON.parse(new TextDecoder().decode(pkt.data)), pkt.timestamp); break;
+      case PacketType.METADATA:
+        try { this.emit('metadata', JSON.parse(new TextDecoder().decode(pkt.data)) as JsonRecord, pkt.timestamp); }
+        catch { this.emit('metadata', { raw: new TextDecoder().decode(pkt.data) } as JsonRecord, pkt.timestamp); }
+        break;
+      case PacketType.HEARTBEAT: this.emit('heartbeat', pkt.timestamp); break;
       case PacketType.ACK: this.emit('ack', new DataView(pkt.data.buffer).getUint32(0, true)); break;
     }
   }
   private ack(seq: number) {
     const buf = new ArrayBuffer(4); new DataView(buf).setUint32(0, seq, true);
     this.sendQ.enqueue({ type: PacketType.ACK, priority: Priority.HIGH, sequenceNumber: this.seq++, timestamp: Date.now(), data: new Uint8Array(buf), requiresAck: false });
+  }
+  private sendHeartbeat() {
+    this.sendQ.enqueue({ type: PacketType.HEARTBEAT, priority: Priority.LOW, sequenceNumber: this.seq++, timestamp: Date.now(), data: new Uint8Array(0), requiresAck: false });
   }
   getStats(){ return { ...this.stats, queueSizes:{ send: this.sendQ.length, receive: this.recvQ.length } }; }
 }
@@ -176,13 +202,13 @@ export class SolaceLivePacketClient extends EventEmitter {
     this.packetWS.on('audio', (a: Float32Array, t: number)=>this.emit('audioChunk', a, t));
     this.packetWS.on('textPartial', (s: string, t: number)=>this.emit('textPartial', s, t));
     this.packetWS.on('textFinal', (s: string, t: number)=>this.emit('textFinal', s, t));
-    this.packetWS.on('metadata', (m: unknown, t: number)=>this.emit('metadata', m, t));
+    this.packetWS.on('metadata', (m: JsonRecord, t: number)=>this.emit('metadata', m, t));
     this.packetWS.on('disconnect', ()=>this.emit('disconnected'));
   }
   sendAudio(a: Float32Array){ this.packetWS.sendAudio(a); }
   sendUserText(s: string){ this.packetWS.sendText(s, true); }
   sendPartialTranscription(s: string){ this.packetWS.sendText(s, false); }
-  sendMetadata(meta: unknown){ this.packetWS.sendMetadata(meta); }
+  sendMetadata(meta: JsonRecord){ this.packetWS.sendMetadata(meta); }
   getPerformanceStats(){ return this.packetWS.getStats(); }
   close(){ this.packetWS.close(); }
 }

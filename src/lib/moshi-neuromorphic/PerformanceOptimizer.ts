@@ -199,8 +199,6 @@ export class PerformanceOptimizer {
   
   private generateRecommendations(): OptimizationRecommendation[] {
     const recommendations: OptimizationRecommendation[] = [];
-    
-    // Analyze consciousness cycle time
     const avgCycleTime = this.calculateAverage(this.consciousnessCycleTimes);
     if (avgCycleTime > 50) {
       recommendations.push({
@@ -211,8 +209,6 @@ export class PerformanceOptimizer {
         implementation: 'Add dynamic cycle rate adjustment based on packet load'
       });
     }
-    
-    // Analyze thought racing performance
     const raceTime = this.getAverageForOperation('thought-race');
     if (raceTime > 20) {
       recommendations.push({
@@ -223,10 +219,8 @@ export class PerformanceOptimizer {
         implementation: 'Use Promise.allSettled for parallel thought evaluation'
       });
     }
-    
-    // Analyze memory usage
     const memProfile = this.analyzeMemoryUsage();
-    if (memProfile.totalHeapUsed > 100 * 1024 * 1024) { // 100MB
+    if (memProfile.totalHeapUsed > 100 * 1024 * 1024) {
       recommendations.push({
         type: 'memory',
         priority: 'medium',
@@ -235,8 +229,6 @@ export class PerformanceOptimizer {
         implementation: 'Create object pools for NeuralPacket instances'
       });
     }
-    
-    // Analyze packet processing efficiency
     const avgPacketTime = this.calculateAverage(this.packetProcessingTimes);
     if (avgPacketTime > 5) {
       recommendations.push({
@@ -247,8 +239,6 @@ export class PerformanceOptimizer {
         implementation: 'Use binary serialization instead of JSON for packet data'
       });
     }
-    
-    // Add caching recommendations
     recommendations.push({
       type: 'caching',
       priority: 'medium',
@@ -263,14 +253,9 @@ export class PerformanceOptimizer {
     });
   }
   
-  /**
-   * Apply automatic optimizations based on current performance
-   */
   public autoOptimize(profile: PerformanceProfile): OptimizationResult {
     const applied: string[] = [];
     const failed: string[] = [];
-    
-    // Auto-apply low-risk optimizations
     for (const rec of profile.recommendations) {
       if (rec.priority === 'critical' || rec.priority === 'high') {
         try {
@@ -284,7 +269,7 @@ export class PerformanceOptimizer {
               applied.push(`Caching optimization: ${rec.description}`);
               break;
             default:
-              // Manual implementation required
+              // TODO: Implement actual optimization strategies
               failed.push(`Manual implementation required: ${rec.description}`);
           }
         } catch (error) {
@@ -297,14 +282,12 @@ export class PerformanceOptimizer {
   }
   
   private applyMemoryOptimizations(): void {
-    // Clear old measurements to free memory
+    // TODO: Implement actual object pooling instead of just clearing
     for (const [operation, measurements] of this.measurements) {
       if (measurements.length > 1000) {
-        measurements.splice(0, measurements.length - 500); // Keep last 500
+        measurements.splice(0, measurements.length - 500);
       }
     }
-    
-    // Clear old timing data
     if (this.packetProcessingTimes.length > 1000) {
       this.packetProcessingTimes.splice(0, this.packetProcessingTimes.length - 500);
     }

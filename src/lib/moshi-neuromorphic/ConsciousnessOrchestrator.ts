@@ -1,8 +1,5 @@
 /**
  * Consciousness Orchestrator - Unified control system for neuromorphic processing
- * 
- * This orchestrates all neuromorphic components to create a coherent
- * consciousness-like processing layer over the Moshi kernel.
  */
 
 import { NeuralPacket, DSCP } from '../../experiments/neuromorphic-research/neural-packet-types';
@@ -31,32 +28,24 @@ export interface ProcessingMetrics {
 }
 
 export class ConsciousnessOrchestrator {
-  // Core neuromorphic components
   private thoughtRacer: ThoughtRacer;
   private attention: AttentionMechanism;
   private gammaOsc: GammaOscillator;
   private hebbian: HebbianNetwork;
   private qosNetwork: QoSNeuralNetwork;
-  
-  // State management
   private state: ConsciousnessState;
   private metrics: ProcessingMetrics;
   private packetBuffer: Map<string, NeuralPacket[]>;
-  
-  // Timing constants
   private readonly CONSCIOUSNESS_CYCLE = 100; // ms, alpha rhythm
   private readonly WORKING_MEMORY_CAPACITY = 7; // Miller's magic number
   private readonly ATTENTION_THRESHOLD = 0.7;
   
   constructor() {
-    // Initialize components
     this.thoughtRacer = new ThoughtRacer();
     this.attention = new AttentionMechanism();
     this.gammaOsc = new GammaOscillator();
     this.hebbian = new HebbianNetwork();
     this.qosNetwork = new QoSNeuralNetwork();
-    
-    // Initialize state
     this.state = {
       arousal: 0.5,
       focus: null,
@@ -75,27 +64,17 @@ export class ConsciousnessOrchestrator {
     };
     
     this.packetBuffer = new Map();
-    
-    // Start consciousness cycle
     this.startConsciousnessCycle();
   }
   
-  /**
-   * Main consciousness processing cycle - runs at ~10Hz (alpha rhythm)
-   */
   private async startConsciousnessCycle(): Promise<void> {
     setInterval(async () => {
       await this.processConsciousnessFrame();
     }, this.CONSCIOUSNESS_CYCLE);
   }
   
-  /**
-   * Process one frame of consciousness
-   */
   private async processConsciousnessFrame(): Promise<void> {
     performanceOptimizer.startTiming('consciousness-cycle');
-    
-    // 1. Gather packets from all streams
     const allPackets = this.gatherPackets();
     if (allPackets.length === 0) {
       performanceOptimizer.endTiming('consciousness-cycle');
@@ -120,39 +99,28 @@ export class ConsciousnessOrchestrator {
       performanceOptimizer.endTiming('thought-race');
       this.metrics.thoughtsRaced++;
       
-      // 5. Generate gamma burst for binding
       performanceOptimizer.startTiming('gamma-binding');
       const boundPackets = this.gammaOsc.generateThetaGamma(winner);
       performanceOptimizer.endTiming('gamma-binding');
       this.metrics.gammaBindingEvents++;
-      
-      // 6. Update working memory
       this.updateWorkingMemory(winner.sourceAS.id, boundPackets);
-      
-      // 7. Apply Hebbian learning to strengthen successful paths
-      this.hebbian.updateWeights(winner, []); // Use updateWeights with winner and empty losers array
+
+      // TODO: Get actual losers from ThoughtRacer instead of empty array
+      this.hebbian.updateWeights(winner, []);
       this.metrics.hebbianUpdates++;
-      // Note: A more complete implementation would get losers from ThoughtRacer
-      
-      // 8. Update consciousness state based on processing
-      const pathStrength = winner.amplitude; // Use packet amplitude as proxy for path strength
+
+      // TODO: Calculate actual path strength from network topology
+      const pathStrength = winner.amplitude;
       this.updateConsciousnessState(winner, pathStrength);
     }
-    
-    // 9. Update QoS for future packets
     this.updateQoSPriorities(focusedPackets);
     
     this.metrics.packetsProcessed += allPackets.length;
-    
-    // Record performance metrics
     const cycleTime = performanceOptimizer.endTiming('consciousness-cycle');
     performanceOptimizer.recordConsciousnessCycle(cycleTime);
     performanceOptimizer.recordPacketProcessing(allPackets, cycleTime);
   }
   
-  /**
-   * Inject packets from Moshi kernel or other sources
-   */
   public injectPackets(streamId: string, packets: NeuralPacket[]): void {
     if (!this.packetBuffer.has(streamId)) {
       this.packetBuffer.set(streamId, []);
@@ -160,21 +128,15 @@ export class ConsciousnessOrchestrator {
     
     const buffer = this.packetBuffer.get(streamId)!;
     buffer.push(...packets);
-    
-    // Maintain buffer size
     if (buffer.length > 100) {
       buffer.splice(0, buffer.length - 100);
     }
   }
   
-  /**
-   * Gather all available packets for processing
-   */
   private gatherPackets(): NeuralPacket[] {
     const packets: NeuralPacket[] = [];
     
     for (const [, buffer] of this.packetBuffer) {
-      // Take up to 10 packets per stream
       const streamPackets = buffer.splice(0, 10);
       packets.push(...streamPackets);
     }
@@ -182,13 +144,10 @@ export class ConsciousnessOrchestrator {
     return packets;
   }
   
-  /**
-   * Determine the current focus target
-   */
   private determineFocus(packets: NeuralPacket[]): string | null {
     if (packets.length === 0) return null;
-    
-    // Find the stream with highest amplitude (strongest signal)
+
+    // TODO: Use actual attention salience instead of just amplitude
     const streamStrengths = new Map<string, number>();
     
     for (const packet of packets) {
@@ -210,9 +169,6 @@ export class ConsciousnessOrchestrator {
     return focusStream;
   }
   
-  /**
-   * Update working memory with new packets
-   */
   private updateWorkingMemory(streamId: string, packets: NeuralPacket[]): void {
     if (!this.state.workingMemory.has(streamId)) {
       this.state.workingMemory.set(streamId, []);

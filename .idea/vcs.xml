@@ -3,7 +3,6 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/moshi-typescript" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/solace-live-backup" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/whisperX" vcs="Git" />
   </component>
 </project>

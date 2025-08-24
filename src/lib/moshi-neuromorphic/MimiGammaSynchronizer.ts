@@ -1,8 +1,5 @@
 /**
  * Mimi-Gamma Synchronizer - Bridges 12.5Hz Mimi frames with 40Hz gamma oscillations
- * 
- * This handles the critical timing synchronization between the Mimi codec's
- * frame rate and the neuromorphic gamma oscillations for neural binding.
  */
 
 import { NeuralPacket, PacketType, DSCP } from '../../experiments/neuromorphic-research/neural-packet-types';
@@ -27,8 +24,6 @@ export class MimiGammaSynchronizer {
   private frameBuffer: MimiFrame[] = [];
   private gammaPhase: number = 0;
   private thetaPhase: number = 0;
-  
-  // Timing constants
   private readonly MIMI_PERIOD_MS = 80;    // 1000/12.5 Hz
   private readonly GAMMA_PERIOD_MS = 25;   // 1000/40 Hz
   private readonly THETA_PERIOD_MS = 167;  // 1000/6 Hz
@@ -44,20 +39,13 @@ export class MimiGammaSynchronizer {
     };
   }
   
-  /**
-   * Synchronize a Mimi frame to gamma oscillations
-   * Generates multiple gamma-locked packets per Mimi frame
-   */
   public synchronizeToFrame(audioFrame: Float32Array): NeuralPacket[] {
     const packets: NeuralPacket[] = [];
     const frameTimestamp = Date.now();
-    
-    // Calculate frame energy for amplitude modulation
     const frameEnergy = this.calculateFrameEnergy(audioFrame);
-    
-    // Generate gamma bursts for this frame (3-4 gamma cycles per Mimi frame)
+
     const gammaBurstsPerFrame = Math.floor(this.GAMMA_PER_MIMI);
-    const extraBurst = (this.phaseAccumulator += 0.2) >= 1; // Handle fractional part
+    const extraBurst = (this.phaseAccumulator += 0.2) >= 1;
     if (extraBurst) {
       this.phaseAccumulator -= 1;
     }
@@ -65,21 +53,13 @@ export class MimiGammaSynchronizer {
     const totalBursts = gammaBurstsPerFrame + (extraBurst ? 1 : 0);
     
     for (let i = 0; i < totalBursts; i++) {
-      // Calculate timing within the Mimi frame
       const gammaOffset = i * this.GAMMA_PERIOD_MS;
       const timestamp = frameTimestamp + gammaOffset;
-      
-      // Update gamma phase
       this.gammaPhase = (this.gammaPhase + 2 * Math.PI / totalBursts) % (2 * Math.PI);
-      
-      // Update theta phase (slower modulation)
       this.thetaPhase = (timestamp / this.THETA_PERIOD_MS * 2 * Math.PI) % (2 * Math.PI);
-      
-      // Theta modulates gamma strength (theta-gamma coupling)
-      const thetaModulation = (Math.sin(this.thetaPhase) + 1) / 2; // 0 to 1
-      const gammaStrength = 0.5 + 0.5 * thetaModulation; // 0.5 to 1
-      
-      // Create neural packet for this gamma burst
+
+      const thetaModulation = (Math.sin(this.thetaPhase) + 1) / 2;
+      const gammaStrength = 0.5 + 0.5 * thetaModulation;
       const packet: NeuralPacket = this.createGammaPacket(
         audioFrame,
         frameEnergy,
@@ -89,8 +69,6 @@ export class MimiGammaSynchronizer {
       );
       
       packets.push(packet);
-      
-      // Add phase-locked satellites for binding (if phase alignment enabled)
       if (this.config.phaseAlignment && gammaStrength > 0.7) {
         packets.push(...this.createPhaseSatellites(packet));
       }
@@ -99,9 +77,6 @@ export class MimiGammaSynchronizer {
     return packets;
   }
   
-  /**
-   * Create a gamma-locked neural packet from audio data
-   */
   private createGammaPacket(
     audioFrame: Float32Array,
     energy: number,
@@ -109,12 +84,9 @@ export class MimiGammaSynchronizer {
     burstIndex: number,
     strength: number
   ): NeuralPacket {
-    // Extract features from audio frame segment
     const segmentStart = Math.floor((burstIndex / this.GAMMA_PER_MIMI) * audioFrame.length);
     const segmentEnd = Math.floor(((burstIndex + 1) / this.GAMMA_PER_MIMI) * audioFrame.length);
     const segment = audioFrame.slice(segmentStart, segmentEnd);
-    
-    // Calculate spectral centroid for frequency mapping
     const spectralCentroid = this.calculateSpectralCentroid(segment);
     
     return {
@@ -130,23 +102,17 @@ export class MimiGammaSynchronizer {
         id: 'gamma-binding',
         type: 'consciousness'
       },
-      
-      // Neural properties
       frequency: this.config.gammaFrequency,
       amplitude: energy * strength,
       phase: this.gammaPhase,
-      
-      // QoS for real-time processing
       qos: {
-        dscp: energy > 0.5 ? DSCP.EF : DSCP.AF31, // High energy gets priority
+        dscp: energy > 0.5 ? DSCP.EF : DSCP.AF31,
         latency: this.GAMMA_PERIOD_MS,
-        bandwidth: segment.length * 4, // Float32 bytes
-        jitter: 5, // ms
+        bandwidth: segment.length * 4,
+        jitter: 5,
         burstiness: strength,
         reliability: 0.99
       },
-      
-      // Audio payload
       payload: {
         audioSegment: Array.from(segment),
         spectralCentroid,

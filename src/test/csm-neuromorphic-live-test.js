@@ -50,10 +50,7 @@ try {
   ConsciousnessOrchestrator = consciousnessModule.ConsciousnessOrchestrator;
   
 } catch (error) {
-  console.log('📋 Note: Running in simplified mode without TypeScript modules');
-  console.log('💡 To run full test: npm run build first, then run the compiled JS');
-  
-  // Create mock implementations for basic testing
+  // TODO: Build TypeScript modules first, then import compiled JS
   CSMStreamingService = class {
     constructor() {
       this.baseUrl = 'http://localhost:11434/v1';
@@ -90,8 +87,8 @@ try {
       };
     }
   };
-  
-  // Mock performance optimizer
+
+  // TODO: Replace with actual performance optimizer after build
   performanceOptimizer = {
     startTiming: () => {},
     endTiming: () => Math.random() * 50 + 25,
@@ -102,8 +99,8 @@ try {
     }),
     reset: () => {}
   };
-  
-  // Mock consciousness orchestrator
+
+  // TODO: Replace with actual consciousness orchestrator after build
   ConsciousnessOrchestrator = class {
     constructor() {
       this.state = {
@@ -189,25 +186,17 @@ class CSMNeuromorphicLiveTester {
       console.log(`Prompt: "${testPrompts[i]}"`);
       
       performanceOptimizer.startTiming('csm-processing');
-      
-      // Get CSM response (real or mock)
       let csmResponse;
       if (this.modelAvailable) {
-        // TODO: Implement real CSM query when service is available
+        // TODO: Query actual CSM model loaded in Ollama
         csmResponse = await this.csmService.generateMockCSMResponse(testPrompts[i]);
       } else {
         csmResponse = await this.csmService.generateMockCSMResponse(testPrompts[i]);
       }
       
       console.log(`Response: "${csmResponse.text.substring(0, 60)}..."`);
-      
-      // Convert to neuromorphic packets
       const packets = this.convertToNeuralPackets(csmResponse, i);
-      
-      // Inject into consciousness layer
       this.orchestrator.injectPackets(`csm-test-${i}`, packets);
-      
-      // Allow processing time
       await new Promise(resolve => setTimeout(resolve, 100));
       
       const processingTime = performanceOptimizer.endTiming('csm-processing');
@@ -222,8 +211,6 @@ class CSMNeuromorphicLiveTester {
   
   async testPerformanceProfile() {
     console.log('⚡ Testing Performance Profile...\n');
-    
-    // Generate some load
     const loadPromises = [];
     for (let i = 0; i < 5; i++) {
       loadPromises.push(this.processLoadQuery(i));
@@ -307,7 +294,7 @@ class CSMNeuromorphicLiveTester {
       console.log(`Input: "${step.prompt}"`);
       
       const response = await this.csmService.generateMockCSMResponse(step.prompt);
-      // Adjust mock response to match expected emotional trajectory
+      // TODO: Use actual CSM model emotional outputs
       if (response.consciousness_state) {
         response.consciousness_state.arousal = step.expectedArousal + (Math.random() - 0.5) * 0.1;
         response.consciousness_state.valence = step.expectedValence + (Math.random() - 0.5) * 0.1;

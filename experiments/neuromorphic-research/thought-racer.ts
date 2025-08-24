@@ -8,18 +8,12 @@ import {
   CognitiveAS
 } from './neural-packet-types';
 
-/**
- * Statistics for the ThoughtRacer
- */
 export interface ThoughtRacerStatistics {
   totalRaces: number;
   pathBoosts: { [key: string]: number };
   averageWinTimes: { [key: string]: number };
 }
 
-/**
- * Represents a thought currently racing
- */
 export interface Racer {
   thought: NeuralPacket;
   startTime: number;
@@ -27,41 +21,30 @@ export interface Racer {
   qos: NeuralQoS;
 }
 
-// ============================================================================\
-// THOUGHT RACER - Competitive Neural Selection
-// ============================================================================\
 
 export class ThoughtRacer {
   private races: Map<string, Race> = new Map();
   private qosBoosts: Map<string, number> = new Map();
   private winHistory: Map<string, number[]> = new Map();
 
-  /**
-   * Race multiple thoughts - fastest one wins and gets QoS boost
-   */
   async race(thoughts: NeuralPacket[]): Promise<NeuralPacket> {
     const raceId: string = crypto.randomUUID();
     const race = new Race(raceId);
     this.races.set(raceId, race);
 
-    // Launch all thoughts simultaneously
     const racers: Racer[] = thoughts.map(thought => ({
       thought: thought,
       startTime: performance.now(),
-      // Assuming selectPath is synchronous or returns SynapticPath
       path: this.selectPath(thought),
-      // Note: calculateEffectiveQoS should return NeuralQoS as per its signature
       qos: this.calculateEffectiveQoS(thought)
     }));
 
-    // Race with QoS-weighted propagation delays
     const winnerResult = await Promise.race(
       racers.map(async (racer) => {
-        // Simulate propagation with QoS-based delay
         const delay = this.calculatePropagationDelay(racer);
         await this.simulateDelay(delay);
 
-        const result: RaceResult = { // Explicit type
+        const result: RaceResult = {
           thought: racer.thought,
           raceTime: performance.now() - racer.startTime,
           path: racer.path,
@@ -74,26 +57,22 @@ export class ThoughtRacer {
       })
     );
 
-    // Although Promise.race returns RaceResult, we want the winning packet
     const winner: NeuralPacket = winnerResult.thought;
-    winnerResult.winner = true; // Mark the winner in the RaceResult
-    race.winner = winnerResult; // Store the winning RaceResult in the Race
+    winnerResult.winner = true;
+    race.winner = winnerResult;
 
-    // Winner gets QoS boost (Hebbian reinforcement)
     this.reinforceWinner(winnerResult);
 
-    // Losers get slight QoS penalty
-    const losers: RaceResult[] = racers // Explicit type
+    const losers: RaceResult[] = racers
       .filter(r => r.thought.id !== winner.id)
       .map(r => race.participants.get(r.thought.id)!)
       .filter(r => r !== undefined);
 
     this.penalizeLosers(losers);
 
-    // Update win history for analysis
     this.updateWinHistory(winnerResult);
 
-    return winner; // Return the winning NeuralPacket
+    return winner;
   }
 
   private calculateEffectiveQoS(thought: NeuralPacket): NeuralQoS {
@@ -109,12 +88,12 @@ export class ThoughtRacer {
   }
 
   private calculatePropagationDelay(racer: Racer): number {
-    const baseDelay = racer.qos.latency; // Explicit type
-    const jitterNoise = (Math.random() - 0.5) * racer.qos.jitter; // Explicit type
-    const loadDelay = 1000 / racer.qos.bandwidth; // Inverse bandwidth // Explicit type
-    const priorityBonus = (46 - racer.qos.dscp) * 0.5; // Higher DSCP = less delay // Explicit type
+    const baseDelay = racer.qos.latency;
+    const jitterNoise = (Math.random() - 0.5) * racer.qos.jitter;
+    const loadDelay = 1000 / racer.qos.bandwidth;
+    const priorityBonus = (46 - racer.qos.dscp) * 0.5;
 
-    // Packet loss simulation
+    // TODO: Implement actual network packet loss patterns
     if (Math.random() < racer.qos.loss) {
       return Infinity; // Lost packet never arrives
     }
@@ -124,22 +103,20 @@ export class ThoughtRacer {
 
   private async simulateDelay(ms: number): Promise<void> {
     if (ms === Infinity) {
-      return new Promise(() => { }); // Never resolves
+      return new Promise(() => { });
     }
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private reinforceWinner(winner: RaceResult): void {
-    const pathKey: string = this.getPathKey(winner.thought); // Explicit type
-    const currentBoost: number = this.qosBoosts.get(pathKey) || 1.0; // Explicit type
+    const pathKey: string = this.getPathKey(winner.thought);
+    const currentBoost: number = this.qosBoosts.get(pathKey) || 1.0;
 
-    // Adaptive boost based on win margin and speed
-    const speedBonus: number = 100 / winner.raceTime; // Faster wins = bigger boost
+    const speedBonus: number = 100 / winner.raceTime;
     const newBoost: number = currentBoost * (1 + 0.1 * speedBonus);
 
-    this.qosBoosts.set(pathKey, Math.min(newBoost, 10)); // Cap at 10x
+    this.qosBoosts.set(pathKey, Math.min(newBoost, 10));
 
-    // Upgrade DSCP class if consistent winner
     if (newBoost > 1.5 && winner.thought.qos.dscp < DSCP.CONSCIOUS_THOUGHT) {
       winner.thought.qos.dscp = this.upgradeDSCP(winner.thought.qos.dscp);
     }

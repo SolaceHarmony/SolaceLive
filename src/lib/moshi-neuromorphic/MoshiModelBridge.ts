@@ -1,14 +1,10 @@
 /**
  * Moshi Model Bridge - Connects neuromorphic layer to actual Moshi transformers
- * 
- * This bridges the gap between our synthetic audio testing and real Moshi model inference,
- * providing the interface for actual speech-to-speech processing.
  */
 
 import { NeuralPacket, PacketType } from '../../experiments/neuromorphic-research/neural-packet-types';
 import { MoshiKernel } from './MoshiKernel';
 
-// Import the actual Moshi transformer from our integration
 import { transformer } from '../moshi-complete/client/transformer';
 
 export interface MoshiModelConfig {
@@ -41,8 +37,6 @@ export class MoshiModelBridge {
   private config: MoshiModelConfig;
   private context: StreamingContext;
   private isInitialized: boolean = false;
-  
-  // Model components (will be initialized from actual Moshi)
   private transformer: any = null;
   private mimiEncoder: any = null;
   private mimiDecoder: any = null;
@@ -67,24 +61,18 @@ export class MoshiModelBridge {
     };
   }
   
-  /**
-   * Initialize the Moshi model and components
-   */
   public async initialize(): Promise<void> {
     try {
       console.log('🚀 Initializing Moshi Model Bridge...');
-      
-      // Initialize the transformer from our Moshi integration
       if (typeof transformer?.initialize === 'function') {
         await transformer.initialize();
         this.transformer = transformer;
         console.log('✅ Transformer initialized');
       } else {
-        console.warn('⚠️ Transformer not available, using mock implementation');
+        // TODO: Load actual Moshi transformer model
+        console.warn('⚠️ Transformer not available, using mock');
         this.transformer = this.createMockTransformer();
       }
-      
-      // Initialize Mimi codec components
       await this.initializeMimiCodec();
       
       this.isInitialized = true;
@@ -96,9 +84,6 @@ export class MoshiModelBridge {
     }
   }
   
-  /**
-   * Process real audio through the complete Moshi pipeline
-   */
   public async processRealAudio(audioBuffer: Float32Array): Promise<MoshiInferenceResult> {
     if (!this.isInitialized) {
       throw new Error('MoshiModelBridge not initialized. Call initialize() first.');
@@ -107,16 +92,9 @@ export class MoshiModelBridge {
     const startTime = performance.now();
     
     try {
-      // 1. Encode audio to Mimi tokens
       const audioTokens = await this.encodeAudioToTokens(audioBuffer);
-      
-      // 2. Run transformer inference
       const inferenceResult = await this.runTransformerInference(audioTokens);
-      
-      // 3. Process through neuromorphic layer
       await this.processNeuromorphically(audioBuffer, inferenceResult);
-      
-      // 4. Update conversation context
       this.updateContext(audioBuffer, inferenceResult);
       
       const processingTime = performance.now() - startTime;
@@ -132,12 +110,9 @@ export class MoshiModelBridge {
     }
   }
   
-  /**
-   * Initialize Mimi codec components
-   */
   private async initializeMimiCodec(): Promise<void> {
     try {
-      // Try to load actual Mimi codec from our integration
+      // TODO: Load actual Mimi codec from moshi-rust or ONNX
       const { MimiEncoder, MimiDecoder } = await import('../moshi-complete/client/decoder/decoderWorker');
       
       this.mimiEncoder = new MimiEncoder({
@@ -158,9 +133,6 @@ export class MoshiModelBridge {
     }
   }
   
-  /**
-   * Encode audio buffer to Mimi tokens
-   */
   private async encodeAudioToTokens(audioBuffer: Float32Array): Promise<number[]> {
     if (this.mimiEncoder?.encode) {
       return await this.mimiEncoder.encode(audioBuffer);
@@ -171,12 +143,8 @@ export class MoshiModelBridge {
     return Array.from({ length: numTokens }, (_, i) => Math.floor(Math.random() * 1024));
   }
   
-  /**
-   * Run transformer inference on tokens
-   */
   private async runTransformerInference(audioTokens: number[]): Promise<Omit<MoshiInferenceResult, 'processingTime'>> {
     if (this.transformer?.generate) {
-      // Use actual transformer
       const result = await this.transformer.generate({
         input_tokens: audioTokens,
         max_length: this.config.maxSequenceLength,
@@ -204,33 +172,20 @@ export class MoshiModelBridge {
     };
   }
   
-  /**
-   * Process inference results through neuromorphic layer
-   */
   private async processNeuromorphically(
     audioBuffer: Float32Array, 
     inferenceResult: Omit<MoshiInferenceResult, 'processingTime'>
   ): Promise<void> {
-    // Convert inference results to neural packets and inject into kernel
     const packets = this.convertInferenceToPackets(inferenceResult);
-    
-    // Process audio through neuromorphic pipeline
     await this.kernel.processMimiFrame(audioBuffer);
-    
-    // Inject inference tokens as additional packets
     const orchestrator = (this.kernel as any).orchestrator;
     if (orchestrator) {
       orchestrator.injectPackets('moshi-inference', packets);
     }
   }
   
-  /**
-   * Convert inference results to neural packets
-   */
   private convertInferenceToPackets(result: Omit<MoshiInferenceResult, 'processingTime'>): NeuralPacket[] {
     const packets: NeuralPacket[] = [];
-    
-    // Convert text tokens to neural packets
     result.textTokens.forEach((token, index) => {
       packets.push({
         id: crypto.randomUUID(),
