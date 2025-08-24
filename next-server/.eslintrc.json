@@ -1,0 +1,7 @@
+{
+  "root": true,
+  "extends": ["next/core-web-vitals", "plugin:react/recommended"],
+  "rules": {
+    // you can add or customize rules here
+  }
+}

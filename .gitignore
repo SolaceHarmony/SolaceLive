@@ -26,3 +26,10 @@ dist-ssr
 # Environment files
 .env
 .env.*
+
+# Next.js build output
+.next/
+next-server/.next/
+next-server/.next/**
+next-server/.next/standalone/
+next-server/.next/standalone/**
