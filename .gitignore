@@ -33,4 +33,16 @@ next-server/.next/
 next-server/.next/**
 next-server/.next/standalone/
 next-server/.next/standalone/**
+
+# Large model artifacts
+models/**/*.gguf
+models/**/*.ggml
+models/**/*.ggml*
+models/**/*.bin
+models/**/*.pt
+models/**/*.pth
+models/**/*.ckpt
+models/**/*.onnx
+models/**/*.safetensors
+
 /models/gemma3-12b-csm-3.gguf
