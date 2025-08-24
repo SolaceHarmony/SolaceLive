@@ -33,3 +33,4 @@ next-server/.next/
 next-server/.next/**
 next-server/.next/standalone/
 next-server/.next/standalone/**
+/models/gemma3-12b-csm-3.gguf
