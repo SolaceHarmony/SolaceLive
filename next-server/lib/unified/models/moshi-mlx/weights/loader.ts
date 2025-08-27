@@ -1,6 +1,8 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { hfGet } from '../../../../hf-loader';
+import mlx from '@frost-beta/mlx';
+const { core: mx } = mlx;
 import type { LmConfig } from '../lm';
 
 /**
@@ -138,3 +140,65 @@ export async function validateFromConfig(lmRepo: string, mimiRepo: string, cfgPa
   await validateMimiWeightsFromHF(mimiRepo);
 }
 
+// ========== Low-level safetensors reading (subset) ==========
+type TensorInfo = { dtype: string; shape: number[]; data_offsets: [number, number] };
+
+async function readSafetensors(filePath: string): Promise<{ header: Record<string, TensorInfo>; headerSize: number; buf: Buffer }>{
+  const fd = await fs.open(filePath, 'r');
+  try {
+    const head = Buffer.alloc(8);
+    await fd.read(head, 0, 8, 0);
+    const headerSize = Number(head.readBigUInt64LE(0));
+    const headerBuf = Buffer.alloc(headerSize);
+    await fd.read(headerBuf, 0, headerSize, 8);
+    const json = JSON.parse(headerBuf.toString('utf8'));
+    const buf = await fs.readFile(filePath);
+    return { header: json.tensors as Record<string, TensorInfo>, headerSize, buf };
+  } finally {
+    await fd.close();
+  }
+}
+
+function dtypeToArray(buf: Buffer, dtype: string, offset: number, lengthBytes: number): Float32Array {
+  // We currently only support F32 for loading (no simulation). Others must be added explicitly.
+  if (dtype !== 'F32' && dtype.toUpperCase() !== 'FLOAT32') {
+    throw new Error(`Unsupported dtype for loader: ${dtype}`);
+  }
+  const slice = buf.subarray(offset, offset + lengthBytes);
+  // Create Float32Array view (Node Buffer is Uint8Array-compatible)
+  const f32 = new Float32Array(slice.buffer, slice.byteOffset, Math.floor(lengthBytes / 4));
+  // Copy to a standalone ArrayBuffer to detach from Buffer
+  return new Float32Array(f32);
+}
+
+export async function loadLmWeightsSubset(lmRepo: string, names: string[]): Promise<Map<string, any>> {
+  const idx = await loadLmIndex(lmRepo);
+  if (!idx) throw new Error(`Missing model.safetensors.index.json in ${lmRepo}`);
+  // Group names by file
+  const byFile: Record<string, string[]> = {};
+  for (const key of names) {
+    const file = idx.weight_map[key];
+    if (!file) throw new Error(`Weight key not found in index: ${key}`);
+    (byFile[file] ||= []).push(key);
+  }
+  const out = new Map<string, any>();
+  for (const [file, keys] of Object.entries(byFile)) {
+    const local = await hfGet(file, lmRepo);
+    const { header, headerSize, buf } = await readSafetensors(local);
+    for (const key of keys) {
+      const info = header[key];
+      if (!info) throw new Error(`Tensor ${key} not found in ${file}`);
+      const [start, end] = info.data_offsets;
+      const dataStart = 8 + headerSize + start;
+      const byteLen = end - start;
+      const f32 = dtypeToArray(buf, info.dtype, dataStart, byteLen);
+      const expectedLen = info.shape.reduce((a, b) => a * b, 1);
+      if (f32.length !== expectedLen) {
+        throw new Error(`Tensor ${key} length mismatch: got ${f32.length}, expected ${expectedLen}`);
+      }
+      const arr = mx.array(Array.from(f32)).reshape([ ...info.shape ]);
+      out.set(key, arr);
+    }
+  }
+  return out;
+}

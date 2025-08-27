@@ -14,6 +14,7 @@ import fs from 'fs';
 import mlx from '@frost-beta/mlx';
 import { Mimi, createMimiConfig } from '../../models/moshi-mlx/mimi';
 import { LmModel, createLmConfigFromDict } from '../../models/moshi-mlx/lm';
+import { validateFromConfig, loadLmWeightsSubset } from '../../models/moshi-mlx/weights/loader';
 
 // ===== Packet Protocol (same layout as client) =====
 enum PacketType {
@@ -133,12 +134,32 @@ class PacketWebSocketServer {
     this.mimi = new Mimi(createMimiConfig());
     this.lm = new LmModel(lmCfg);
 
-    // Initialize model weights (random if none provided)
-    this.lm.init().then(() => {
-      console.log('[PacketServer] MLX LmModel initialized');
-    }).catch((e) => {
-      console.error('[PacketServer] Failed to initialize LmModel:', e);
-    });
+    // Validate and optionally load LM weights subset from HF if configured
+    const lmRepo = process.env.LM_REPO;
+    const mimiRepo = process.env.MIMI_REPO;
+    (async () => {
+      try {
+        if (lmRepo && mimiRepo) {
+          await validateFromConfig(lmRepo, mimiRepo, cfgPath);
+          console.log('[PacketServer] Weights validation OK for repos', { lmRepo, mimiRepo });
+          // Attempt to load a minimal subset to exercise model readiness
+          const minimal: string[] = ['text_emb.weight', 'text_out_head.weight'];
+          for (let i = 0; i < this.audioCodebooks; i++) {
+            minimal.push(`audio_emb.${i}.weight`, `audio_out_heads.${i}.weight`);
+          }
+          const subset = await loadLmWeightsSubset(lmRepo, minimal);
+          await this.lm.loadWeights(subset);
+          console.log('[PacketServer] Loaded LM weight subset');
+        } else {
+          // Initialize structure to avoid null state
+          await this.lm.init();
+          console.warn('[PacketServer] LM_REPO/MIMI_REPO not set; LM weights not loaded');
+        }
+      } catch (e) {
+        console.error('[PacketServer] Weight validation/loading failed:', e);
+        try { await this.lm.init(); } catch {}
+      }
+    })();
 
     // Setup WebSocket
     this.setupWS();
