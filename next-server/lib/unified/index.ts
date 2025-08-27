@@ -30,7 +30,7 @@ export * from './services/whisperWasmService';
 // Component exports
 // Legacy component moved to archive
 export { NeuromorphicVoiceInterface } from './components/NeuromorphicVoiceInterface';
-export { ConsciousnessMonitor } from './components/ConsciousnessMonitor';
+// ConsciousnessMonitor archived; remove export
 
 // Type exports
 export * from './types';
