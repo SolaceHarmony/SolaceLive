@@ -54,6 +54,37 @@
 - [ ] Deployment docs + simple configuration guide
 - [ ] Archive/experiments relocation (see below)
 
+**Execution Strategy Update (Aggressive, No‑Simulation)**
+
+Immediate (1–3 days)
+- Loaders: Implement safetensors weight loading for LM/Mimi (server‑side first). Validate shapes against `moshi_mlx_2b.json` and fail fast on mismatch.
+- LM delays: Apply acoustic `delays` in `LmModel.step()` (shift/mask per codebook; maintain cache alignment).
+- Telemetry: Add step metrics (encode/step/decode timings, queue depth, underruns) to `/health`.
+
+Short Term (3–7 days)
+- Refine dead‑code report: Treat all `pages/**/*.tsx` as entrypoints; add library‑only unreferenced view.
+- Status panel: In `/packet-voice`, display step rate, queue depth, last decode ms, and packet server health.
+- Browser VAD option: Integrate a real VAD backend (onnxruntime‑web Silero or WebRTC‑VAD); add UI toggle; throw if not ready.
+
+Medium Term (1–2 weeks)
+- Tokenizer (server‑only, optional): Add SentencePiece runtime to map token ids ↔ text.
+- Backpressure policies: Drop low‑priority `TEXT_PARTIAL` first; skip decode when over budget; expose counters.
+
+Implementation Notes
+- Safetensors mapping: Group tensors by layer/param (q/k/v/o, w1/2/3, norms). Reject partial loads.
+- Mimi: Keep codec server‑side initially; expose explicit "not ready" errors (no simulation).
+- Strict 80 ms loop: One LM step per audio frame; sequentially process bursts; never buffer partial frames server‑side.
+- WhisperX: No fallbacks—UI must surface readiness/token/mirror requirements.
+
+Risk Management
+- Model sizes: Keep Mimi on server; use browser only for ASR (smaller models). Use `/api/hf` mirror and IndexedDB cache.
+- Performance: Target encode+step+decode ≤ 30 ms; log "over‑budget" counter in `/health` and in status panel.
+- DX: Fix/disable broken pre‑commit hooks or document `--no-verify` in dev docs.
+
+Docs & Testing
+- Weights & Delays page: Document fetch, shape validation, and application with CLI examples.
+- Extend smoke: After weights, assert non‑zero step counts and decode timings in `/health` and one downstream audio frame.
+
 **Archive / Experiments Candidates (lib/unified)**
 These are useful references but not in the critical path of the current packetized stack. Keep under `lib/unified/experiments` or `lib/unified/archive` for clarity.
 

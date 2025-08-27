@@ -6,6 +6,7 @@ import { PacketStreamingVoiceInterface } from "../lib/unified/components/PacketS
 
 export default function PacketVoicePage() {
   const [packetHealth, setPacketHealth] = React.useState<string>('');
+  const [metrics, setMetrics] = React.useState<any>(null);
   return (
     <main style={{ padding: 24, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif' }}>
       <h1>Packet Streaming Voice (Next.js + WebSocket)</h1>
@@ -36,12 +37,20 @@ export default function PacketVoicePage() {
                 const r = await fetch('/api/test/packet-health');
                 const j = await r.json();
                 setPacketHealth(j.ok ? `OK (${j.status}) clients=${j.data?.clients ?? 'n/a'}` : `Failed (${j.status || 'n/a'})`);
+                setMetrics(j.data?.metrics || null);
               } catch (e) {
                 setPacketHealth(`Error: ${e instanceof Error ? e.message : String(e)}`);
               }
             }}
           >Check Packet Server</button>
           {packetHealth && <div style={{ marginTop: 6, color: '#444' }}>{packetHealth}</div>}
+          {metrics && (
+            <div style={{ marginTop: 6, color: '#444' }}>
+              <div><b>Step:</b> count={metrics.step.count} avg={metrics.step.avgMs.toFixed(1)}ms last={metrics.step.lastMs}ms overBudget={metrics.step.overBudget}/{metrics.step.count} (budget {metrics.step.budgetMs}ms)</div>
+              <div><b>Encode:</b> count={metrics.encode.count} avg={metrics.encode.avgMs.toFixed(1)}ms last={metrics.encode.lastMs}ms</div>
+              <div><b>Decode:</b> count={metrics.decode.count} avg={metrics.decode.avgMs.toFixed(1)}ms last={metrics.decode.lastMs}ms</div>
+            </div>
+          )}
         </div>
       </div>
     </main>

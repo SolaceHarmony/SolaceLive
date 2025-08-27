@@ -95,6 +95,19 @@ class PacketWebSocketServer {
   private lm: LmModel;
   private textVocab: number;
   private audioCodebooks: number;
+  private metrics = {
+    encodeCount: 0,
+    encodeTotalMs: 0,
+    stepCount: 0,
+    stepTotalMs: 0,
+    decodeCount: 0,
+    decodeTotalMs: 0,
+    overBudgetCount: 0,
+    lastEncodeMs: 0,
+    lastStepMs: 0,
+    lastDecodeMs: 0,
+  };
+  private readonly STEP_BUDGET_MS = 80;
 
   constructor(port = 8788) {
     this.port = port;
@@ -102,7 +115,12 @@ class PacketWebSocketServer {
     // Setup HTTP
     this.app.use(cors());
     this.app.use(express.json());
-    this.app.get('/health', (req, res) => res.json({ status: 'healthy', clients: this.clients.size, uptime: process.uptime() }));
+    this.app.get('/health', (req, res) => res.json({
+      status: 'healthy',
+      clients: this.clients.size,
+      uptime: process.uptime(),
+      metrics: this.getMetrics()
+    }));
 
     // Initialize MLX-backed components synchronously on startup
     const cfgPath = path.join(process.cwd(), 'lib/unified/configs/moshi_mlx_2b.json');
@@ -187,7 +205,12 @@ class PacketWebSocketServer {
         const f32 = new Float32Array(pkt.data.buffer, pkt.data.byteOffset, Math.floor(pkt.data.byteLength / 4));
         // Encode to Mimi tokens (if weights loaded)
         try {
+          const t0 = Date.now();
           const tokens = await this.mimi.encode(f32);
+          const dt = Date.now() - t0;
+          this.metrics.encodeCount++;
+          this.metrics.encodeTotalMs += dt;
+          this.metrics.lastEncodeMs = dt;
           for (let cb = 0; cb < tokens.length; cb++) {
             state.audioCodes[cb].push(...tokens[cb]);
           }
@@ -232,7 +255,13 @@ class PacketWebSocketServer {
         audioStep.push(mx.array([[tok]]));
       }
       try {
+        const tStep0 = Date.now();
         const { next_text, next_audio } = this.lm.step(textToken, audioStep, state.lmCache);
+        const stepMs = Date.now() - tStep0;
+        this.metrics.stepCount++;
+        this.metrics.stepTotalMs += stepMs;
+        this.metrics.lastStepMs = stepMs;
+        if (stepMs > this.STEP_BUDGET_MS) this.metrics.overBudgetCount++;
         // Append generated tokens
         for (let cb = 0; cb < next_audio.length; cb++) {
           const v = (next_audio[cb].tolist() as number[][])[0][0];
@@ -245,7 +274,12 @@ class PacketWebSocketServer {
         // Decode and stream a single audio frame
         try {
           const perCb = state.generatedAudio.map(arr => [arr[arr.length - 1]]);
+          const tDec0 = Date.now();
           const audioFrame = await this.mimi.decode(perCb);
+          const decMs = Date.now() - tDec0;
+          this.metrics.decodeCount++;
+          this.metrics.decodeTotalMs += decMs;
+          this.metrics.lastDecodeMs = decMs;
           if (audioFrame && audioFrame.length) this.sendAudio(ws, audioFrame);
         } catch {}
       } catch {
@@ -257,6 +291,28 @@ class PacketWebSocketServer {
     }
   }
 
+  private getMetrics() {
+    const avg = (sum: number, n: number) => (n > 0 ? sum / n : 0);
+    return {
+      encode: {
+        count: this.metrics.encodeCount,
+        avgMs: avg(this.metrics.encodeTotalMs, this.metrics.encodeCount),
+        lastMs: this.metrics.lastEncodeMs,
+      },
+      step: {
+        count: this.metrics.stepCount,
+        avgMs: avg(this.metrics.stepTotalMs, this.metrics.stepCount),
+        lastMs: this.metrics.lastStepMs,
+        overBudget: this.metrics.overBudgetCount,
+        budgetMs: this.STEP_BUDGET_MS,
+      },
+      decode: {
+        count: this.metrics.decodeCount,
+        avgMs: avg(this.metrics.decodeTotalMs, this.metrics.decodeCount),
+        lastMs: this.metrics.lastDecodeMs,
+      }
+    };
+  }
   private computeNewSteps(state: ClientState): number {
     let minNew = Infinity;
     for (let cb = 0; cb < this.audioCodebooks; cb++) {
