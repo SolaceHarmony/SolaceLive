@@ -302,43 +302,15 @@ export class FasterWhisperPipeline {
         console.log('Transcription result:', result.text);
         return result.text || "";
       } else {
-        // Fallback if Whisper pipeline failed to load
-        return this.mockTranscribeSegment(audio_segment);
+        throw new Error('Whisper pipeline not initialized');
       }
     } catch (error) {
       console.error('Error in Whisper transcription:', error);
-      // Fallback to mock transcription
-      return this.mockTranscribeSegment(audio_segment);
+      throw error instanceof Error ? error : new Error(String(error));
     }
   }
 
-  private mockTranscribeSegment(audio_segment: Float32Array): string {
-    // Emergency fallback only - should not be used in production
-    console.warn('Using fallback transcription - Whisper model not loaded');
-    if (audio_segment.length === 0) return "";
-    
-    // Simple energy-based speech detection
-    let energy = 0;
-    for (const sample of audio_segment) {
-      energy += sample * sample;
-    }
-    energy = Math.sqrt(energy / audio_segment.length);
-    
-    if (energy < 0.01) return ""; // No speech detected
-    
-    // Generate mock words based on audio characteristics
-    const mockWords = [
-      'system', 'working', 'with', 'real', 'time', 'audio', 'processing'
-    ];
-    
-    const wordCount = Math.min(Math.floor(energy * 10), mockWords.length);
-    const words = [];
-    for (let i = 0; i < wordCount; i++) {
-      words.push(mockWords[i % mockWords.length]);
-    }
-    
-    return words.length > 0 ? words.join(' ') : "[Whisper model not loaded - please check browser console]";
-  }
+  // No fallback transcription implementation by design (no simulation)
 
   private logMelSpectrogram(audio: Float32Array, n_mels: number = 80): Float32Array {
     // Transliteration of log_mel_spectrogram from whisperx/audio.py

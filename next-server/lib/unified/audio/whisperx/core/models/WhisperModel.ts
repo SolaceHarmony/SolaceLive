@@ -197,67 +197,10 @@ export class WhisperModel {
   }
 
   private async transcribeSegment(audioSegment: Float32Array, baseId: number): Promise<WhisperResult> {
-    // This would be the actual Whisper inference
-    // For now, we'll simulate the transcription process
-    
-    const duration = audioSegment.length / 16000;
-    
-    // Simulate processing time based on audio length
-    const processingTime = Math.min(duration * 100, 1000);
-    await new Promise(resolve => setTimeout(resolve, processingTime));
-
-    // Generate mock transcription result
-    const mockText = this.generateMockTranscription(duration);
-    const segments: WhisperSegment[] = this.createMockSegments(mockText, baseId, duration);
-
-    return {
-      text: mockText,
-      segments,
-      language: 'en',
-      duration
-    };
+    // No simulation: actual Whisper inference must be integrated or this will throw
+    throw new Error('WhisperModel.transcribeSegment not implemented (no simulation). Use FasterWhisperPipeline.');
   }
-
-  private generateMockTranscription(duration: number): string {
-    // Generate realistic mock transcription based on duration
-    const wordsPerSecond = 2.5; // Average speaking rate
-    const wordCount = Math.ceil(duration * wordsPerSecond);
-    
-    const mockWords = [
-      'hello', 'world', 'this', 'is', 'a', 'test', 'of', 'the', 'whisper', 'transcription',
-      'system', 'working', 'with', 'real', 'time', 'audio', 'processing', 'and', 'speech',
-      'recognition', 'technology', 'using', 'advanced', 'neural', 'networks'
-    ];
-
-    const words: string[] = [];
-    for (let i = 0; i < wordCount; i++) {
-      words.push(mockWords[i % mockWords.length]);
-    }
-
-    return words.join(' ');
-  }
-
-  private createMockSegments(text: string, baseId: number, duration: number): WhisperSegment[] {
-    const words = text.split(' ');
-    const segments: WhisperSegment[] = [];
-    
-    // Create one segment for the entire text
-    const segment: WhisperSegment = {
-      id: baseId,
-      seek: 0,
-      start: 0,
-      end: duration,
-      text: text,
-      tokens: words.map((_, i) => 1000 + i), // Mock token IDs
-      temperature: 0.0,
-      avg_logprob: -0.5,
-      compression_ratio: 1.8,
-      no_speech_prob: 0.1
-    };
-
-    segments.push(segment);
-    return segments;
-  }
+  // No mock text/segments by design (no simulation)
 
   private detectLanguage(): string {
     // In a real implementation, this would detect the language

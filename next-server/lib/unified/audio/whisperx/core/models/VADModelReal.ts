@@ -239,56 +239,20 @@ export class PyannoteVAD extends Vad {
     this.vad_pipeline = this.loadVadModel(device, _use_auth_token, _model_fp);
   }
 
-  private loadVadModel(device: string, _use_auth_token?: string, _model_fp?: string): any {
-    // In browser environment, we'd use a lightweight VAD model
-    // For now, simulate the pyannote VAD model loading
-    console.log(`Loading VAD model on device: ${device}`);
-    
+  private loadVadModel(_device: string, _use_auth_token?: string, _model_fp?: string): any {
+    // No simulation: require a real VAD backend to be integrated explicitly
     return {
-      device,
-      model_loaded: true,
-      // Mock VAD inference
-      infer: (audio: Float32Array) => this.mockVADInference(audio)
-    };
-  }
-
-  private mockVADInference(audio: Float32Array): SlidingWindowFeature {
-    // Simplified VAD inference - would use actual model in production
-    const frame_length = 400; // 25ms at 16kHz
-    const hop_length = 160;   // 10ms at 16kHz
-    const num_frames = Math.floor((audio.length - frame_length) / hop_length) + 1;
-    
-    const scores: number[][] = [];
-    
-    for (let i = 0; i < num_frames; i++) {
-      const start_idx = i * hop_length;
-      const frame = audio.slice(start_idx, start_idx + frame_length);
-      
-      // Simple energy-based VAD score
-      let energy = 0;
-      for (const sample of frame) {
-        energy += sample * sample;
+      model_loaded: false,
+      infer: (_audio: Float32Array) => {
+        throw new Error('Pyannote VAD not integrated in browser environment');
       }
-      energy = Math.sqrt(energy / frame.length);
-      
-      // Convert energy to probability-like score
-      const vad_score = Math.min(Math.max(energy * 10, 0), 1);
-      scores.push([vad_score]);
-    }
-
-    return {
-      data: scores,
-      sliding_window: {
-        start: 0,
-        duration: frame_length / 16000,
-        step: hop_length / 16000
-      },
-      labels: ['speech']
     };
   }
+
+  // No mock VAD inference path by design (no simulation)
 
   async call(audio: { waveform: Float32Array; sample_rate: number }): Promise<any> {
-    // Direct transliteration of __call__ method
+    // Require real VAD model integration; throw otherwise
     return this.vad_pipeline.infer(audio.waveform);
   }
 
