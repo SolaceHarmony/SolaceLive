@@ -160,15 +160,53 @@ async function readSafetensors(filePath: string): Promise<{ header: Record<strin
 }
 
 function dtypeToArray(buf: Buffer, dtype: string, offset: number, lengthBytes: number): Float32Array {
-  // We currently only support F32 for loading (no simulation). Others must be added explicitly.
-  if (dtype !== 'F32' && dtype.toUpperCase() !== 'FLOAT32') {
-    throw new Error(`Unsupported dtype for loader: ${dtype}`);
+  const dt = dtype.toUpperCase();
+  if (dt === 'F32' || dt === 'FLOAT32') {
+    const slice = buf.subarray(offset, offset + lengthBytes);
+    const f32 = new Float32Array(slice.buffer, slice.byteOffset, Math.floor(lengthBytes / 4));
+    return new Float32Array(f32);
   }
-  const slice = buf.subarray(offset, offset + lengthBytes);
-  // Create Float32Array view (Node Buffer is Uint8Array-compatible)
-  const f32 = new Float32Array(slice.buffer, slice.byteOffset, Math.floor(lengthBytes / 4));
-  // Copy to a standalone ArrayBuffer to detach from Buffer
-  return new Float32Array(f32);
+  if (dt === 'F16' || dt === 'FLOAT16') {
+    const view = new DataView(buf.buffer, buf.byteOffset + offset, lengthBytes);
+    const out = new Float32Array(lengthBytes / 2);
+    for (let i = 0; i < out.length; i++) {
+      const h = view.getUint16(i * 2, true);
+      out[i] = halfToFloat(h);
+    }
+    return out;
+  }
+  if (dt === 'BF16' || dt === 'BFloat16') {
+    const view = new DataView(buf.buffer, buf.byteOffset + offset, lengthBytes);
+    const out = new Float32Array(lengthBytes / 2);
+    for (let i = 0; i < out.length; i++) {
+      const b = view.getUint16(i * 2, true);
+      // bfloat16: use as high 16 bits of float32
+      const u32 = b << 16;
+      const fView = new DataView(new ArrayBuffer(4));
+      fView.setUint32(0, u32, true);
+      out[i] = fView.getFloat32(0, true);
+    }
+    return out;
+  }
+  throw new Error(`Unsupported dtype for loader: ${dtype}`);
+}
+
+function halfToFloat(h: number): number {
+  // IEEE 754 half-precision to float32
+  const s = (h & 0x8000) >> 15;
+  const e = (h & 0x7C00) >> 10;
+  const f = h & 0x03FF;
+  if (e === 0) {
+    // subnormal
+    const val = (f / Math.pow(2, 10)) * Math.pow(2, -14);
+    return (s ? -1 : 1) * val;
+  } else if (e === 0x1F) {
+    // Inf/NaN
+    return f ? NaN : (s ? -Infinity : Infinity);
+  } else {
+    const val = (1 + f / Math.pow(2, 10)) * Math.pow(2, e - 15);
+    return (s ? -1 : 1) * val;
+  }
 }
 
 export async function loadLmWeightsSubset(lmRepo: string, names: string[]): Promise<Map<string, any>> {
@@ -188,6 +226,35 @@ export async function loadLmWeightsSubset(lmRepo: string, names: string[]): Prom
     for (const key of keys) {
       const info = header[key];
       if (!info) throw new Error(`Tensor ${key} not found in ${file}`);
+      const [start, end] = info.data_offsets;
+      const dataStart = 8 + headerSize + start;
+      const byteLen = end - start;
+      const f32 = dtypeToArray(buf, info.dtype, dataStart, byteLen);
+      const expectedLen = info.shape.reduce((a, b) => a * b, 1);
+      if (f32.length !== expectedLen) {
+        throw new Error(`Tensor ${key} length mismatch: got ${f32.length}, expected ${expectedLen}`);
+      }
+      const arr = mx.array(Array.from(f32)).reshape([ ...info.shape ]);
+      out.set(key, arr);
+    }
+  }
+  return out;
+}
+
+export async function loadAllLmWeights(lmRepo: string): Promise<Map<string, any>> {
+  const idx = await loadLmIndex(lmRepo);
+  if (!idx) throw new Error(`Missing model.safetensors.index.json in ${lmRepo}`);
+  const byFile: Record<string, string[]> = {};
+  for (const [key, file] of Object.entries(idx.weight_map)) {
+    (byFile[file] ||= []).push(key);
+  }
+  const out = new Map<string, any>();
+  for (const [file, keys] of Object.entries(byFile)) {
+    const local = await hfGet(file, lmRepo);
+    const { header, headerSize, buf } = await readSafetensors(local);
+    for (const key of keys) {
+      const info = header[key];
+      if (!info) continue; // ignore unexpected keys
       const [start, end] = info.data_offsets;
       const dataStart = 8 + headerSize + start;
       const byteLen = end - start;

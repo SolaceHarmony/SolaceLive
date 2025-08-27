@@ -14,7 +14,7 @@ import fs from 'fs';
 import mlx from '@frost-beta/mlx';
 import { Mimi, createMimiConfig } from '../../models/moshi-mlx/mimi';
 import { LmModel, createLmConfigFromDict } from '../../models/moshi-mlx/lm';
-import { validateFromConfig, loadLmWeightsSubset } from '../../models/moshi-mlx/weights/loader';
+import { validateFromConfig, loadLmWeightsSubset, loadAllLmWeights } from '../../models/moshi-mlx/weights/loader';
 
 // ===== Packet Protocol (same layout as client) =====
 enum PacketType {
@@ -142,14 +142,20 @@ class PacketWebSocketServer {
         if (lmRepo && mimiRepo) {
           await validateFromConfig(lmRepo, mimiRepo, cfgPath);
           console.log('[PacketServer] Weights validation OK for repos', { lmRepo, mimiRepo });
-          // Attempt to load a minimal subset to exercise model readiness
-          const minimal: string[] = ['text_emb.weight', 'text_out_head.weight'];
-          for (let i = 0; i < this.audioCodebooks; i++) {
-            minimal.push(`audio_emb.${i}.weight`, `audio_out_heads.${i}.weight`);
+          if (process.env.LM_LOAD_ALL === '1') {
+            const all = await loadAllLmWeights(lmRepo);
+            await this.lm.loadWeights(all);
+            console.log('[PacketServer] Loaded full LM weights');
+          } else {
+            // Attempt to load a minimal subset to exercise model readiness
+            const minimal: string[] = ['text_emb.weight', 'text_out_head.weight'];
+            for (let i = 0; i < this.audioCodebooks; i++) {
+              minimal.push(`audio_emb.${i}.weight`, `audio_out_heads.${i}.weight`);
+            }
+            const subset = await loadLmWeightsSubset(lmRepo, minimal);
+            await this.lm.loadWeights(subset);
+            console.log('[PacketServer] Loaded LM weight subset');
           }
-          const subset = await loadLmWeightsSubset(lmRepo, minimal);
-          await this.lm.loadWeights(subset);
-          console.log('[PacketServer] Loaded LM weight subset');
         } else {
           // Initialize structure to avoid null state
           await this.lm.init();
