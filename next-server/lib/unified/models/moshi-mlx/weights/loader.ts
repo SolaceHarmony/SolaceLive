@@ -1,0 +1,140 @@
+import { promises as fs } from 'fs';
+import path from 'path';
+import { hfGet } from '../../../../hf-loader';
+import type { LmConfig } from '../lm';
+
+/**
+ * Lightweight safetensors index validation for LM/Mimi.
+ * No tensor loading here (no simulation) — this only checks presence of expected keys
+ * so we can fail fast on obviously incompatible repos.
+ */
+
+async function readJson(p: string): Promise<any> {
+  const txt = await fs.readFile(p, 'utf8');
+  return JSON.parse(txt);
+}
+
+export async function loadLmIndex(repo: string): Promise<{ weight_map: Record<string, string> } | null> {
+  try {
+    const local = await hfGet('model.safetensors.index.json', repo);
+    const j = await readJson(local);
+    if (j && typeof j === 'object' && j.weight_map) return j as { weight_map: Record<string, string> };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function validateLmWeightsFromHF(repo: string, cfg: LmConfig): Promise<void> {
+  const idx = await loadLmIndex(repo);
+  if (!idx) throw new Error(`Missing model.safetensors.index.json in ${repo}`);
+  const keys = Object.keys(idx.weight_map);
+
+  const must = [
+    'text_emb.weight',
+    'text_out_head.weight',
+  ];
+  for (const k of must) {
+    if (!keys.includes(k)) throw new Error(`Weights missing required key: ${k}`);
+  }
+  // Audio embeddings/heads per codebook
+  for (let i = 0; i < cfg.audio_codebooks; i++) {
+    if (!keys.includes(`audio_emb.${i}.weight`)) throw new Error(`Missing audio_emb.${i}.weight`);
+    if (!keys.includes(`audio_out_heads.${i}.weight`)) throw new Error(`Missing audio_out_heads.${i}.weight`);
+  }
+  // Transformer layers should have at least one param per layer
+  for (let i = 0; i < cfg.transformer.num_layers; i++) {
+    const prefix = `transformer.${i}.`;
+    const has = keys.some((k) => k.startsWith(prefix));
+    if (!has) throw new Error(`Missing transformer layer params for layer ${i}`);
+  }
+}
+
+export async function validateMimiWeightsFromHF(repo: string): Promise<void> {
+  // Mimi may be packaged differently; look for a tokenizer/codec checkpoint
+  const candidates = [
+    'tokenizer.safetensors',
+    'mimi.safetensors',
+    'tokenizer-e351c8d8-checkpoint125.safetensors',
+  ];
+  let found = false;
+  for (const f of candidates) {
+    try {
+      const p = await hfGet(f, repo);
+      if (p && (await fs.stat(p)).size > 0) { found = true; break; }
+    } catch {
+      // continue
+    }
+  }
+  if (!found) throw new Error(`No Mimi/tokenizer safetensors found in ${repo}`);
+}
+
+export async function validateFromConfig(lmRepo: string, mimiRepo: string, cfgPath: string): Promise<void> {
+  const cfg = await readJson(cfgPath) as any;
+  // Construct LmConfig subset used by validator
+  const lmCfg: LmConfig = {
+    transformer: {
+      d_model: cfg.dim,
+      num_heads: cfg.num_heads,
+      num_layers: cfg.num_layers,
+      dim_feedforward: 4 * cfg.dim,
+      causal: cfg.causal,
+      norm_first: true,
+      bias_ff: false,
+      bias_attn: false,
+      layer_scale: cfg.layer_scale,
+      context: cfg.context,
+      max_period: cfg.max_period,
+      use_conv_block: false,
+      use_conv_bias: true,
+      cross_attention: cfg.cross_attention || false,
+      gating: true,
+      norm: 'rms_norm',
+      positional_embedding: cfg.positional_embedding,
+      conv_layout: false,
+      conv_kernel_size: 3,
+      kv_repeat: 1,
+      max_seq_len: 4096,
+    },
+    depformer: {
+      transformer: {
+        d_model: cfg.depformer_dim,
+        num_heads: cfg.depformer_num_heads,
+        num_layers: cfg.depformer_num_layers,
+        dim_feedforward: cfg.depformer_dim_feedforward,
+        causal: cfg.depformer_causal ?? true,
+        norm_first: true,
+        bias_ff: false,
+        bias_attn: cfg.depformer_layer_scale ?? false,
+        layer_scale: null,
+        context: cfg.depformer_context ?? cfg.dep_q,
+        max_period: cfg.depformer_max_period ?? 8,
+        use_conv_block: false,
+        use_conv_bias: true,
+        cross_attention: false,
+        gating: true,
+        norm: 'rms_norm',
+        positional_embedding: cfg.depformer_pos_emb,
+        conv_layout: false,
+        conv_kernel_size: 3,
+        kv_repeat: 1,
+        max_seq_len: 4096,
+      },
+      num_slices: cfg.dep_q,
+      weights_per_step_schedule: cfg.depformer_weights_per_step_schedule || null,
+      low_rank_embeddings: cfg.depformer_low_rank_embeddings || null,
+    },
+    text_in_vocab_size: cfg.text_card + 1,
+    text_out_vocab_size: cfg.text_card,
+    audio_vocab_size: cfg.card + 1,
+    audio_delays: cfg.delays.slice(1),
+    audio_codebooks: cfg.n_q,
+    demux_second_stream: cfg.demux_second_stream || false,
+    conditioners: cfg.conditioners || {},
+    extra_heads_dim: cfg.extra_heads_dim || 6,
+    extra_heads_num_heads: cfg.extra_heads_num_heads || 0,
+  };
+  await validateLmWeightsFromHF(lmRepo, lmCfg);
+  await validateMimiWeightsFromHF(mimiRepo);
+}
+

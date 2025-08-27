@@ -134,6 +134,10 @@ export class LmModel {
     if (!this.weightsLoaded) throw new Error('LmModel.loadWeights: no valid weights applied');
   }
 
+  isReady(): boolean {
+    return this.weightsLoaded;
+  }
+
   private createCausalMask(seq_len: number): mx.array {
     const mask = mx.zeros([seq_len, seq_len]);
     const indices = mx.arange(seq_len);

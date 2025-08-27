@@ -64,6 +64,8 @@ export class Mimi {
     this.weightsLoaded = true;
   }
 
+  isReady(): boolean { return this.weightsLoaded; }
+
   /** Number of codebooks (RVQ levels). */
   setNumCodebooks(nq: number): void {
     if (nq <= 0) throw new Error('Mimi.setNumCodebooks: nq must be > 0');
@@ -145,4 +147,3 @@ export function createMimiConfig(): MimiConfig {
     vocab_size: 2048,
   };
 }
-
