@@ -120,6 +120,10 @@ class PacketWebSocketServer {
       status: 'healthy',
       clients: this.clients.size,
       uptime: process.uptime(),
+      readiness: {
+        lm: this.lm?.isReady?.() ?? false,
+        mimi: this.mimi?.isReady?.() ?? false,
+      },
       metrics: this.getMetrics()
     }));
 
@@ -309,6 +313,8 @@ class PacketWebSocketServer {
   private getMetrics() {
     const avg = (sum: number, n: number) => (n > 0 ? sum / n : 0);
     return {
+      __lm: (this.lm?.isReady?.() ?? false),
+      __mimi: (this.mimi?.isReady?.() ?? false),
       encode: {
         count: this.metrics.encodeCount,
         avgMs: avg(this.metrics.encodeTotalMs, this.metrics.encodeCount),

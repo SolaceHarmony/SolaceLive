@@ -46,6 +46,7 @@ export default function PacketVoicePage() {
           {packetHealth && <div style={{ marginTop: 6, color: '#444' }}>{packetHealth}</div>}
           {metrics && (
             <div style={{ marginTop: 6, color: '#444' }}>
+              <div><b>Readiness:</b> lm={metrics.__lm ? 'ready' : 'not-ready'} mimi={metrics.__mimi ? 'ready' : 'not-ready'}</div>
               <div><b>Step:</b> count={metrics.step.count} avg={metrics.step.avgMs.toFixed(1)}ms last={metrics.step.lastMs}ms overBudget={metrics.step.overBudget}/{metrics.step.count} (budget {metrics.step.budgetMs}ms)</div>
               <div><b>Encode:</b> count={metrics.encode.count} avg={metrics.encode.avgMs.toFixed(1)}ms last={metrics.encode.lastMs}ms</div>
               <div><b>Decode:</b> count={metrics.decode.count} avg={metrics.decode.avgMs.toFixed(1)}ms last={metrics.decode.lastMs}ms</div>
