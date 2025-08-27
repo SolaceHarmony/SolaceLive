@@ -142,28 +142,16 @@ class PacketWebSocketServer {
         if (lmRepo && mimiRepo) {
           await validateFromConfig(lmRepo, mimiRepo, cfgPath);
           console.log('[PacketServer] Weights validation OK for repos', { lmRepo, mimiRepo });
-          if (process.env.LM_LOAD_ALL === '1') {
-            const all = await loadAllLmWeights(lmRepo);
-            await this.lm.loadWeights(all);
-            console.log('[PacketServer] Loaded full LM weights');
-          } else {
-            // Attempt to load a minimal subset to exercise model readiness
-            const minimal: string[] = ['text_emb.weight', 'text_out_head.weight'];
-            for (let i = 0; i < this.audioCodebooks; i++) {
-              minimal.push(`audio_emb.${i}.weight`, `audio_out_heads.${i}.weight`);
-            }
-            const subset = await loadLmWeightsSubset(lmRepo, minimal);
-            await this.lm.loadWeights(subset);
-            console.log('[PacketServer] Loaded LM weight subset');
-          }
+          const all = await loadAllLmWeights(lmRepo);
+          await this.lm.loadWeights(all);
+          console.log('[PacketServer] Loaded full LM weights');
         } else {
-          // Initialize structure to avoid null state
-          await this.lm.init();
-          console.warn('[PacketServer] LM_REPO/MIMI_REPO not set; LM weights not loaded');
+          console.error('[PacketServer] LM_REPO/MIMI_REPO not set; cannot start without weights');
+          process.exit(1);
         }
       } catch (e) {
         console.error('[PacketServer] Weight validation/loading failed:', e);
-        try { await this.lm.init(); } catch {}
+        process.exit(1);
       }
     })();
 

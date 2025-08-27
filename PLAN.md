@@ -31,7 +31,7 @@
 - Observability: health checks now; step latency/queue/token‑rate metrics next.
 
 **Milestones**
-- M1 Weights & E2E: Load LM/Mimi safetensors; enable encode/step/decode end‑to‑end.
+- M1 Weights & E2E: Load full LM/Mimi safetensors; enable encode/step/decode end‑to‑end (no partial/minimal subset).
 - M2 Delays & Stability: Apply `delays` in LM step; harden 80 ms pacing/backpressure; add core metrics.
 - M3 UX Polish: Optional tokenizer for readable text; partials UI toggle; status/metrics panels.
 - M4 Productization: Configurable models, docs for deployment, simple installer.
