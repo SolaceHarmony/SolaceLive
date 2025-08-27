@@ -10,6 +10,9 @@ const nextConfig = {
   serverExternalPackages: ['@huggingface/transformers'],
   // Set the workspace root for output tracing to avoid Next inferring the wrong root
   outputFileTracingRoot: path.resolve(__dirname, '..'),
+  typescript: {
+    tsconfigPath: 'tsconfig.json',
+  },
 };
 
 export default nextConfig;

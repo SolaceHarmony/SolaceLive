@@ -1,388 +1,185 @@
-# SolaceLive Architecture Documentation
+# SolaceLive Architecture (Aligned with Current Code)
 
-## Overview
-SolaceLive is a real-time speech-to-text application built with React, TypeScript, and Node.js. It provides multiple transcription approaches including WhisperX implementation, browser-based WebGPU processing, and server-side Hugging Face model inference.
+This document reflects the current, focused design: Next.js UI + packetized WebSocket server with MLX-based Moshi/Mimi, and a browser WhisperX demo. It is the canonical contract to prevent drift.
 
-## Tech Stack
+## System Overview
+- **App**: Next.js (React 19) UI in `next-server/` with packet voice and browser WhisperX pages.
+- **Realtime server**: Packetized WebSocket server (TypeScript + MLX) in `next-server/lib/unified/server/server.ts`.
+- **Core libs**: Unified library under `next-server/lib/unified/` (WebSocket, models, audio, services).
+- **Models**: Moshi (LM) + Mimi (codec) in `next-server/lib/unified/models/moshi-mlx/`.
+- **Configuration**: Model configs in `next-server/lib/unified/configs/` (e.g., `moshi_mlx_2b.json`).
 
-### Frontend
-- **React 19.1.1** - UI framework
-- **TypeScript 5.8.3** - Type safety
-- **Vite 7.1.2** - Build tool and dev server
-- **TailwindCSS 3.4.14** - Styling
-- **@huggingface/transformers 3.0.0** - Browser-based ML models (Whisper runs here!)
-- **@livekit/components-react 2.9.14** - LiveKit React components
-- **livekit-client 2.15.5** - Real-time communication
-- **lucide-react 0.540.0** - Icon library
+## Runtime Targets
+- **Audio cadence**: 24 kHz PCM; strict 12.5 Hz steps (80 ms), 1920 samples per step.
+- **Packet bridge**: Binary WS frames with typed headers; streaming audio/text partials.
+- **No simulation**: All outputs must be model-driven; if weights missing, functions throw.
 
-### Backend  
-- **Node.js** with ES modules
-- **Express 4.19.2** - Web server
-- **@huggingface/transformers 3.0.0** - Server-side ML inference
-- **node-wav** - WAV audio processing
-- **Multer** - File upload handling
-- **CORS** - Cross-origin support
+## Core Components (with filepaths)
+- **UI Pages**
+  - `next-server/pages/packet-voice.tsx`: Real-time mic capture (24 kHz, 80 ms), packet WS streaming, audio playback, text partials.
+  - `next-server/pages/whisperx.tsx`: Browser WhisperX demo; auto register `public/coi-serviceworker.js`.
+- **Client Libraries**
+  - `lib/unified/core/websocket-client.ts`: `PacketWebSocket`, `SolaceLivePacketClient` (priority queues, acks, heartbeat).
+  - `lib/unified/services/packetStreamingService.ts`: Bridges UI to packet server.
+  - `lib/unified/utils/audioFrames.ts`: `AudioFrameCapturer` (24 kHz, 1920 samples per frame).
+- **Server**
+  - `lib/unified/server/server.ts`: Packet WS server (TypeScript, MLX). Per-step LM generation (audio-first), Mimi encode/decode hooks.
+- **Models (MLX TS)**
+  - `lib/unified/models/moshi-mlx/transformer.ts`: Transformer stack (RMSNorm, MHA, FFN).
+  - `lib/unified/models/moshi-mlx/lm.ts`: `LmModel` with `forward()`, `generate()`, `step()`; weights enforced.
+  - `lib/unified/models/moshi-mlx/mimi.ts`: `Mimi` streaming API enforcing protocol (24 kHz/12.5 Hz); weights enforced.
+  - `lib/unified/models/moshi-mlx/tokenizer.ts`: Interface stub only (audio-first design – no tokenizer bound).
 
-## Project Structure
+## Data Flows
 
+### Upstream (Mic → Server)
+1. UI captures 24 kHz audio; emits 80 ms `Float32Array(1920)` frames.
+2. Client sends `AUDIO_CHUNK` packets (critical priority) via packet WS.
+
+### Server (Mimi + LM step)
+1. Accumulates exact 80 ms frames; calls `Mimi.encode(frame)` → `[n_q, 1]` tokens.
+2. For each new step: `LmModel.step(pad_text_id, per_codebook_audio_token, cache)` → next `[text_id, audio_tokens]`.
+3. Calls `Mimi.decode(generated_audio_tokens)` → `Float32Array(1920)`.
+4. Streams AUDIO_CHUNK and TEXT_PARTIAL (token ids) to client.
+
+### Downstream (Server → UI)
+1. UI plays PCM (24 kHz) and displays text token ids.
+
+## Packet Protocol
+- **Header (17 bytes)**: type (u8), priority (u8), sequence (u32-le), timestamp (f64-le), length (u16-le), requiresAck (u8)
+- **Types**: HEARTBEAT=0x01, ACK=0x02, AUDIO_CHUNK=0x10, TEXT_PARTIAL=0x20, TEXT_FINAL=0x21, METADATA=0x30
+- **Semantics**:
+  - Audio frames are 80 ms aligned (1920 32-bit samples @ 24 kHz).
+  - ACKs used for final/critical messages; HEARTBEAT every 5s.
+
+### Sequence Diagram (packet voice path)
 ```
-SolaceLive/
-├── solace-live/              # Main application
-│   ├── src/
-│   │   ├── components/       # React components
-│   │   │   ├── WhisperXDemo.tsx
-│   │   │   ├── TransformersTest.tsx
-│   │   │   ├── HFServerTest.tsx
-│   │   │   └── ...
-│   │   ├── lib/whisperx/    # WhisperX implementation
-│   │   │   ├── core/        # Core engine and models
-│   │   │   ├── components/  # UI components
-│   │   │   ├── context/     # React context
-│   │   │   ├── hooks/       # Custom hooks
-│   │   │   └── utils/       # Utilities
-│   │   ├── services/        # Audio and API services
-│   │   ├── types/           # TypeScript definitions
-│   │   ├── utils/           # Shared utilities
-│   │   │   └── audioUtils.ts      # Audio recording and WAV encoding
-│   │   └── App.tsx          # Main application component
-│   ├── server/              # Backend server
-│   │   └── index.js         # Express API server
-│   ├── public/              # Static assets
-│   └── package.json
-├── whisperX/                # Python WhisperX reference (not used)
-└── ARCHITECTURE.md          # This documentation
-```
-
-## Architecture Components
-
-### 1. Frontend Application (React)
-
-#### Main App (`App.tsx`)
-- Tab-based navigation between three transcription modes:
-  1. **WhisperX** - Real-time Whisper in browser + backend processing
-  2. **Browser (WebGPU)** - Pure client-side processing with Transformers.js
-  3. **Server (HF)** - Server-side only processing
-
-#### WhisperX Implementation
-```
-lib/whisperx/
-├── core/
-│   ├── WhisperXEngine.ts     # Main processing engine
-│   └── models/
-│       ├── FasterWhisperModel.ts  # Whisper transcription
-│       ├── VADModelReal.ts        # Voice Activity Detection
-│       ├── AlignmentModelReal.ts  # Word alignment
-│       ├── DiarizationModel.ts    # Speaker diarization
-│       └── SileroVAD.ts          # Silero VAD implementation
-├── components/
-│   ├── RealtimeControls.tsx      # Recording controls
-│   ├── TranscriptionDisplay.tsx  # Display results
-│   ├── AudioWaveform.tsx         # Waveform visualization
-│   └── SpeakerVisualizer.tsx     # Speaker timeline
-├── hooks/
-│   └── useWhisperX.ts            # Main hook for WhisperX
-└── context/
-    └── WhisperXProvider.tsx      # React context provider
+Client (Next)                            Server (MLX)
+-------------                            -------------
+Mic → 24kHz frames (1920) ──AUDIO_CHUNK──▶ Buffer (80ms aligned)
+                                        │
+                                        │ Mimi.encode(frame) → [n_q, 1]
+                                        │ LmModel.step(pad, tokens, cache)
+                                        │ Mimi.decode([n_q, 1]) → PCM(1920)
+◀──AUDIO_CHUNK (PCM 1920)────────────────┘
+◀──TEXT_PARTIAL (token id)
 ```
 
-### 2. Backend Server
+## Model Integration (Config-Driven)
+- **Config**: `lib/unified/configs/moshi_mlx_2b.json`
+  - `n_q`: number of audio codebooks (RVQ levels)
+  - `card`: audio vocab size; `text_card`, `existing_text_padding_id` (text pad only by default)
+  - `delays`: per-codebook acoustic delay (to be applied in LM step)
+- **LM**: `LmModel.step()` is the canonical per-80ms interface; caches; (pending) delay alignment.
+- **Mimi**: `Mimi.streaming()`, `encode()`, `decode()` enforce protocol; require real weights.
 
-#### Express Server (`server/index.js`)
-Provides REST API endpoints for ML inference:
+## Browser WhisperX (Faster-Whisper)
+- **What**: In-browser ASR path using WhisperX/Faster-Whisper semantics for low-latency, privacy-preserving transcription.
+- **Components**: `lib/unified/audio/whisperx/*` (engine, VAD, alignment, diarization) and `lib/unified/components/WhisperXDemo.tsx`.
+- **Page**: `/whisperx` (COI SW auto-reg via `public/coi-serviceworker.js`).
+- **Auth**: `NEXT_PUBLIC_HF_TOKEN` (browser) for gated HF model downloads when required.
+- **Providers**: Uses browser-compatible backends (e.g., Transformers.js/Xenova or wasm-backed transcribers) configured inside the WhisperX engine.
+- **Why**:
+  - Privacy-first: audio stays on-device (no upstream audio).
+  - Perceptual latency: faster local partials before server round-trips.
+  - Composability: partial text can optionally be packetized as `TEXT_PARTIAL` (normal priority) alongside `AUDIO_CHUNK`.
+- **Interplay with Packet Loop**:
+  - Default packet loop is audio-first. When WhisperX is enabled, the UI may send partial text (`TEXT_PARTIAL`) to improve perceived responsiveness while still streaming audio for LM/Mimi generation.
 
-```javascript
-GET  /health                 # Health check
-POST /api/embeddings         # Text embeddings
-POST /api/asr                # Speech-to-text (ASR)
-POST /api/generate           # Text generation
-ALL  /hf/*                   # Hugging Face proxy
-```
+### Lightweight Model Loading (Browser)
+- **Loader**: `lib/unified/audio/whisperx/utils/modelPrefetch.ts`
+  - `prefetchWhisper(model, device)`: warms Transformers.js pipeline and caches weights in IndexedDB.
+  - `detectDevice()`: selects `webgpu` when available or falls back to wasm/CPU.
+  - `prefetchAlignment()`: preloads alignment models (e.g., wav2vec2) for WhisperX.
+- **Token/Access**: `lib/unified/audio/whisperx/utils/hfAuth.ts` applies `NEXT_PUBLIC_HF_TOKEN`/localStorage for gated repos.
+- **Backend Mirror (optional)**: Set `NEXT_PUBLIC_HF_MIRROR=https://host/api/hf` to route model assets via a local proxy (improves reliability/rate limits, centralizes auth). The prefetch code supports both Vite (`VITE_HF_MIRROR`) and Next (`NEXT_PUBLIC_HF_MIRROR`).
 
-#### Key Features:
-- Accepts WAV audio files or URLs
-- Uses Transformers.js for server-side inference
-- Configurable model selection
-- HuggingFace model caching proxy
+## Configuration / Env
+- `NEXT_PUBLIC_PACKET_WS`: packet server WS URL (`ws://localhost:8788` default)
+- `HF_TOKEN`: server-side HF downloads; `NEXT_PUBLIC_HF_TOKEN`: client-side
+- Optional legacy LM Studio envs are ignored in packet path
 
-### 3. Audio Processing Pipeline
+## Canonical Contracts
+- Audio frame: `Float32Array(1920) @ 24kHz`
+- LM step input: `pad_text_id` + `[n_q, 1]` audio tokens
+- LM step output: next text token id + `[n_q, 1]` audio tokens
+- Mimi I/O: encode `Float32Array(1920)` → `[n_q, 1]`; decode `[n_q, 1]` → `Float32Array(1920)`
+- No tokenizer bound: text is pad-only per step unless numeric tokens are supplied explicitly
 
-#### Key Components:
-- **AudioRecorder** class for managing recording
-- **WAV encoding** for backend compatibility
-- **Float32Array** processing for Whisper
-- **ScriptProcessorNode** for real-time capture
+## Gaps / Backlog (Design-Aligned)
+1. Weight loading: safetensors loader + `hfGet` for LM/Mimi; apply via `LmModel.loadWeights()` and `Mimi.loadWeights()`
+2. Acoustic delays: apply `delays` from config in `LmModel.step()`
+3. Server cadence: strict 80 ms tick and backpressure/telemetry
+4. Telemetry: latency, queue depth, token rates, audio drift endpoints/logs
 
-#### Recording Flow:
-1. **Microphone Access** → getUserMedia API
-2. **Audio Capture** → ScriptProcessorNode (4096 sample buffer)
-3. **Real-time Processing** → Continuous streaming to Whisper
-4. **Frontend Whisper** → Immediate transcription in browser
-5. **Backend Communication** → Send transcribed text (not audio) for further processing
-
-#### Audio Utilities (`utils/audioUtils.ts`):
-```typescript
-class AudioRecorder {
-  - Handles microphone access
-  - Chunks audio into segments
-  - Converts Float32Array to WAV
-}
-
-encodeWAV() - Converts Float32Array to WAV blob
-sendAudioToBackend() - Sends audio to /api/asr
-```
-
-### 4. Model Integration
-
-#### Whisper Models (FRONTEND - Real-time)
-- **Location**: Browser via Transformers.js
-- **Purpose**: Immediate speech-to-text, catching every sound
-- **Models**: tiny, tiny.en, base, base.en for speed
-- **Providers**: Xenova (optimized for browser)
-- **Processing**: Continuous, sub-second latency
-
-#### Language Models (BACKEND - TypeScript Server)
-- **Location**: Node.js server
-- **Purpose**: Understanding, context, generation
-- **Models**: Larger models (Qwen, Llama, etc.)
-- **Processing**: On transcribed text from frontend
-
-#### VAD (Voice Activity Detection)
-- Energy-based detection (simplified)
-- Silero VAD structure (ONNX models planned)
-- Configurable thresholds and parameters
-
-## Data Flow
-
-### Real-time Transcription Flow:
-```
-1. User clicks "Start Recording"
-2. Browser requests microphone permission
-3. AudioRecorder captures audio continuously
-4. FRONTEND: Whisper processes audio in real-time
-   - Catches every sound immediately (burps, whispers, etc.)
-   - Runs Whisper model via Transformers.js in browser
-   - Provides instant transcription feedback
-5. Transcribed text sent to BACKEND for:
-   - Further NLP processing
-   - Context understanding
-   - Response generation
-   - Storage/logging
-6. Backend processes with larger models
-7. Response sent back to frontend
-```
-
-### Configuration:
-```typescript
-interface WhisperXConfig {
-  whisperModel: 'tiny' | 'base' | 'small' | ...
-  sampleRate: 16000
-  channels: 1
-  chunkLength: 5  // seconds
-  enableVAD: boolean
-  enableAlignment: boolean
-  enableDiarization: boolean
-}
-```
-
-## API Endpoints
-
-### POST /api/asr
-**Purpose**: Transcribe audio to text
-
-**Request**:
-```javascript
-FormData {
-  file: Blob (WAV audio)
-  body: JSON.stringify({
-    modelId: "onnx-community/whisper-base.en",
-    sampleRate: 16000
-  })
-}
-```
-
-**Response**:
-```json
-{
-  "text": "Transcribed text here"
-}
-```
-
-### POST /api/embeddings
-**Purpose**: Generate text embeddings
-
-**Request**:
-```json
-{
-  "texts": ["text1", "text2"],
-  "modelId": "mixedbread-ai/mxbai-embed-xsmall-v1",
-  "dtype": "q4"
-}
-```
-
-**Response**:
-```json
-{
-  "embeddings": [[0.1, 0.2, ...], [0.3, 0.4, ...]]
-}
-```
-
-### POST /api/generate
-**Purpose**: Generate text completions
-
-**Request**:
-```json
-{
-  "prompt": "Hello, how are",
-  "modelId": "onnx-community/Qwen2.5-0.5B-Instruct",
-  "max_new_tokens": 256
-}
-```
-
-**Response**:
-```json
-{
-  "text": "Hello, how are you doing today?"
-}
-```
-
-## Current State & Issues
-
-### Working:
-- ✅ Backend server running on port 8787
-- ✅ Frontend dev server on port 5173  
-- ✅ Basic audio recording permissions
-- ✅ Audio level detection and visualization
-- ✅ React component structure with hooks
-- ✅ TypeScript type safety throughout
-- ✅ WAV encoding for audio data
-- ✅ Backend ASR endpoint (can process audio)
-- ✅ HuggingFace proxy for model downloads
-- ✅ Cross-origin isolation service worker
-
-### Issues to Fix:
-1. **Frontend Whisper** needs to run in browser, not send audio to backend
-2. **Real-time processing** must be continuous, not chunked  
-3. **Text streaming** from frontend to backend (not audio)
-4. **Model loading** in browser needs actual Whisper ONNX models
-5. **Latency optimization** for instant transcription feedback
-6. **WebSocket connection** for bidirectional streaming
-7. **VAD integration** with actual Silero models
-
-## Development Setup
-
-### Prerequisites:
-- Node.js 18+
-- npm or yarn
-- Modern browser with WebAudio API support
-
-### Installation:
+## How To Run
 ```bash
-cd solace-live
-npm install
+# Realtime packet server (MLX)
+cd next-server && npm install
+npm run packet:server   # ws://localhost:8788
+
+# Next.js UI
+npm run dev             # http://localhost:3000
+# Open: /packet-voice (packet path), /whisperx (browser WhisperX)
 ```
 
-### Running:
-```bash
-# Start both frontend and backend
-npm run dev
+## Anti-Drift Practices
+- Contracts-first: this document is canonical for step API, packet types, cadence
+- Single source: model config (`lib/unified/configs/`) is authoritative (n_q, delays, ids)
+- Build scope: `next-server/tsconfig.json` excludes references/experiments; only unified libs compile
+- No sim: encode/step/decode throw without real weights; avoids silent drift
 
-# Or separately:
-npm run dev:server  # Backend on :8787
-npm run dev:client  # Frontend on :5173
-```
+## Operational Insights & Guidance
 
-### Environment Variables:
-```bash
-HF_TOKEN=hf_xxx        # Optional: Hugging Face token
-TFJS_DEVICE=webgpu     # Optional: TensorFlow.js device
-PORT=8787              # Optional: Server port
-```
+### Invariants & Preconditions
+- **No-Simulation Invariant**: `Mimi.encode/ decode` and `LmModel.step/forward/generate` MUST throw if real weights are not loaded; callers treat this as a degraded state (UI keeps running, streaming can continue without model output).
+- **Step Contract**: One LM step per 80 ms audio frame. Inputs and outputs strictly follow `[n_q, 1]` audio tokens + optional `pad_text_id` for text. Outputs are streamed immediately per step.
+- **Frame Contract**: All upstream audio MUST be `Float32Array(1920)` at 24 kHz. Any resampling or buffering to reach exact 1920 boundary is done client-side (or at capture point) to keep server deterministic.
+- **Weight Preconditions**: Weight loaders are responsible to fully populate parameter maps; partial loads are considered invalid (throw). Safetensors + config must agree on dims, `n_q`, vocab sizes.
 
-## Testing
+### QoS, Backpressure, Jitter
+- **Priority**: `AUDIO_CHUNK` > `TEXT_FINAL` > `TEXT_PARTIAL` > `METADATA/HEARTBEAT`. Queues enforce priority ordering.
+- **Backpressure**: Under load, prefer dropping low-priority text partials first, then skipping decode for a step, before dropping critical audio frames. Never block the event loop.
+- **Jitter Buffer (Client)**: Playback schedules audio slightly in the future (small ramp-in/out) to mask network jitter. When buffer underrun occurs, increase target buffer by small increments; log a “missed audio” event.
+- **Late Frames**: If a received frame’s presentation time has passed, skip scheduling and optionally bump the buffer target; record metrics.
 
-### Audio Test Page:
-Available at `http://localhost:5173/audio-test.html` for isolated audio testing:
-- Microphone permission testing
-- Audio recording verification  
-- WAV encoding validation
-- Audio level monitoring
-- Debug console with detailed logs
-- Playback of recorded audio
+### Acoustic Delays (Application Plan)
+- **Delays Source**: `delays` array from `moshi_mlx_2b.json` indicates per-codebook acoustic delay in steps.
+- **Alignment**: In `LmModel.step()`, mask or shift audio embeddings so text and audio are aligned per `delays`. For codebooks that require future context, use padding/null tokens until the delayed positions are available; keep caches consistent.
+- **Observability**: Track and emit “effective delay” per stream and ensure step-to-step latency budget remains within target.
 
-### Component Testing:
-- **WhisperXDemo**: Full transcription pipeline
-- **TransformersTest**: Browser-only Whisper
-- **HFServerTest**: Backend-only processing
+### Timebase & Clock Sync
+- **Authoritative Time**: Server timestamps packets; client uses sequence + server time to schedule playback. If drift exceeds a threshold (e.g., > 200 ms), client falls back to local clock and resets buffer targets.
+- **Ordering**: Sequence numbers ensure reordering tolerance. Late `AUDIO_CHUNK` may be discarded if scheduling horizon elapsed.
 
-## Security Considerations
+### Observability (Planned Metrics)
+- **Latency**: Capture encode/step/decode durations, end-to-end (mic → audible) latency, and jitter.
+- **Throughput**: Steps per second, token rates, queue depths, late/missed frame counts.
+- **Stability**: HF proxy success rates, cache hits, auth failures; number of weight-load attempts.
+- **Export**: Surface in `/health` (aggregated) and periodic logs.
 
-1. **Microphone Permissions**: Required for audio recording
-2. **CORS**: Configured for cross-origin requests
-3. **File Size Limits**: 25MB max for audio uploads
-4. **Service Worker**: COI (Cross-Origin Isolation) for SharedArrayBuffer
-5. **HTTPS**: Required for getUserMedia in production
+### Security & Privacy
+- **Browser ASR**: WhisperX runs fully in the browser; audio stays on-device. Partial text is optional (`TEXT_PARTIAL`) and plaintext.
+- **Server Token Hygiene**: HF token lives server-side; browsers should use the proxy (`/api/hf`) or a public token with limited scope.
+- **Packet Content**: Upstream audio is PCM; downstream audio is PCM. Audio tokens stay server-side unless explicitly exported.
 
-## Performance Optimizations
+### Failure Modes & Recovery
+- **Weights Missing/Invalid**: Model calls throw; system continues streaming audio and text partials if enabled; UI surfaces a clear degraded-state banner.
+- **HF Proxy Failures**: Fallback guidance: add/refresh `HF_TOKEN`, accept model licenses, try direct client-side with `NEXT_PUBLIC_HF_TOKEN` for public repos if acceptable.
+- **Network Jitter**: Buffer underruns increase target buffer gradually; backpressure drops partials before audio.
 
-1. **Chunked Processing**: 5-second audio chunks
-2. **Queue System**: Prevents concurrent processing overload
-3. **Model Caching**: Models cached after first load
-4. **WebGPU**: Uses GPU acceleration when available
-5. **Streaming**: Planned WebSocket implementation for real-time
+### Multi-Stream (Future)
+- **Stream IDs**: Extend packet header with `streamId` to support multiple concurrent speakers or sessions per WS. Maintain per-stream caches/state.
+- **Mixing**: Client can route streams to separate players or mix channels; server tags metadata with stream identity.
 
-## Future Enhancements
+### Adaptivity
+- **Dynamic `n_q`**: Allow reducing codebooks under load (trading quality for compute/bandwidth). Must be coordinated with model weights.
+- **Step Size**: Keep 80 ms as the hard contract; avoid variable step sizes to preserve determinism.
 
-1. **WebSocket Streaming**: Real-time bidirectional text streaming
-2. **Actual Silero VAD**: ONNX model integration for better speech detection
-3. **Word-level Timestamps**: Alignment model implementation
-4. **Speaker Diarization**: Multi-speaker identification
-5. **Language Detection**: Auto-detect spoken language
-6. **Noise Cancellation**: Advanced audio preprocessing
-7. **Model Quantization**: Smaller, faster models (INT8/INT4)
-8. **Offline Mode**: Local-only processing option
-9. **Moshi Integration**: Future multimodal conversational AI
-10. **WebRTC**: Lower latency audio streaming
+### Testability & Determinism
+- **Smoke Tests**: `/api/test/packet-health`, `/api/test/hf-proxy`, and `npm run smoke` validate basic readiness.
+- **Seeding**: If sampling is introduced later (e.g., non-argmax), expose a seed and temperature to allow repeatable runs during testing.
 
-## Debugging
-
-### Browser Console Commands:
-```javascript
-// Check audio context
-window.AudioContext
-
-// Test microphone
-navigator.mediaDevices.getUserMedia({audio: true})
-
-// Check service worker
-navigator.serviceWorker.getRegistrations()
-
-// Test backend
-fetch('http://localhost:8787/health')
-```
-
-### Common Issues:
-
-**Issue**: Microphone permission denied  
-**Solution**: Check browser settings, ensure HTTPS in production
-
-**Issue**: Models not loading  
-**Solution**: Check network tab, verify HF_TOKEN if needed, check CORS
-
-**Issue**: No audio recorded  
-**Solution**: Check audio levels, verify sample rate match (16kHz)
-
-**Issue**: Backend timeout  
-**Solution**: Increase timeout, use smaller model (tiny.en)
-
-**Issue**: ScriptProcessorNode deprecated warning  
-**Solution**: Known issue, AudioWorklet migration planned
-
-**Issue**: Cross-origin isolation errors  
-**Solution**: Service worker should auto-register, check /coi-serviceworker.js
-
-## References
-
-- [Transformers.js Documentation](https://huggingface.co/docs/transformers.js)
-- [WhisperX Original](https://github.com/m-bain/whisperX)
-- [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API)
-- [Hugging Face Models](https://huggingface.co/models)
+### Resource Targets (Guidance)
+- **Server**: Keep per-step encode+step+decode << 80 ms on target hardware (aim for 10–30 ms). Log when budget exceeded.
+- **Client**: Avoid audio work on the main thread where possible; keep frame capture and playback lightweight.

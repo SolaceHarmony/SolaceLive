@@ -15,8 +15,12 @@ export default function Home() {
   }
 
   return (
-    <main style={{ padding: 20 }}>
+    <main style={{ padding: 20, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif' }}>
       <h1>Next Server Transformer Test</h1>
+      <div style={{ margin: '12px 0' }}>
+        <a href="/whisperx" style={{ marginRight: 12 }}>WhisperX (Browser)</a>
+        <a href="/packet-voice">Packet Streaming Voice</a>
+      </div>
       <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} cols={60} />
       <br />
       <button onClick={call}>Send</button>
