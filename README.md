@@ -1,6 +1,25 @@
-# SolaceLive - AI-Powered Speech-to-Speech Interface
+# SolaceLive - Packetized Speech-to-Speech (Next.js + MLX)
 
-A modern React application that provides real-time speech-to-speech conversation using LiveKit for audio handling and LM Studio for local AI processing.
+This project is migrating to a Next.js app with a packetized 80 ms speech-to-speech loop using an MLX-backed realtime server. For the current architecture and contracts, see ARCHITECTURE.md and PLAN.md.
+
+Quickstart (current stack)
+- Install deps: `npm -C next-server install`
+- Start packet WS server: `npm -C next-server run packet:server` (health: http://localhost:8788/health)
+- Start Next.js UI: `npm -C next-server run dev` (open: http://localhost:3000/packet-voice and /whisperx)
+- Smoke test: `npm -C next-server run smoke`
+
+Key environment variables
+- NEXT_PUBLIC_PACKET_WS (default ws://localhost:8788)
+- HF_TOKEN (server-side for /api/hf proxy); NEXT_PUBLIC_HF_TOKEN (optional client-side)
+- NEXT_PUBLIC_HF_MIRROR=/api/hf (recommended to mirror model assets via local proxy)
+
+Documentation
+- Architecture and runtime contracts: ARCHITECTURE.md
+- Execution plan and milestones: PLAN.md
+
+---
+
+## Legacy README (Vite + LM Studio)
 
 ## Features
 

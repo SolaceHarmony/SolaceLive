@@ -7,6 +7,7 @@ import { PacketStreamingVoiceInterface } from "../lib/unified/components/PacketS
 export default function PacketVoicePage() {
   const [packetHealth, setPacketHealth] = React.useState<string>('');
   const [metrics, setMetrics] = React.useState<any>(null);
+  const [weightsInfo, setWeightsInfo] = React.useState<any>(null);
   return (
     <main style={{ padding: 24, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif' }}>
       <h1>Packet Streaming Voice (Next.js + WebSocket)</h1>
@@ -52,6 +53,24 @@ export default function PacketVoicePage() {
               <div><b>Decode:</b> count={metrics.decode.count} avg={metrics.decode.avgMs.toFixed(1)}ms last={metrics.decode.lastMs}ms</div>
             </div>
           )}
+          <div style={{ marginTop: 8 }}>
+            <button
+              onClick={async () => {
+                try {
+                  const r = await fetch('/api/test/weights');
+                  const j = await r.json();
+                  setWeightsInfo(j.data || null);
+                } catch (e) {
+                  setWeightsInfo({ error: e instanceof Error ? e.message : String(e) });
+                }
+              }}
+            >Inspect Weights</button>
+            {weightsInfo && (
+              <pre style={{ marginTop: 6, maxWidth: 680, overflowX: 'auto', background: '#f6f8fa', padding: 8, borderRadius: 4 }}>
+                {JSON.stringify(weightsInfo, null, 2)}
+              </pre>
+            )}
+          </div>
         </div>
       </div>
     </main>

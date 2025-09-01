@@ -8,26 +8,35 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --config .eslintrc.cjs --ext .js,.jsx,.ts,.tsx",
-    "packet:server": "node --loader ts-node/esm lib/unified/server/server.ts",
+    "packet:server": "tsx lib/unified/server/server.ts",
     "smoke": "node scripts/smoke-test.mjs",
+    "test:gguf": "tsx scripts/test-gguf.mjs",
+    "llama:dry": "tsx scripts/llama-dry-run.mjs",
+    "inspect:gguf": "tsx scripts/inspect-gguf.mjs",
+    "load:gguf": "tsx scripts/load-gguf-lite.mjs",
     "code:report": "node scripts/code-usage-report.mjs"
   },
   "dependencies": {
     "@frost-beta/mlx": "^0.4.0",
     "@huggingface/transformers": "^3.0.0",
+    "cors": "^2.8.5",
     "eslint-plugin-react": "^7.37.5",
+    "express": "^4.19.2",
     "next": "15.5.0",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^15.5.0",
     "@types/node": "^22.9.0",
+    "@types/react": "19.1.12",
     "@typescript-eslint/eslint-plugin": "^8.14.0",
     "@typescript-eslint/parser": "^8.14.0",
     "eslint": "^9.34.0",
     "eslint-plugin-react-hooks": "^5.2.0",
-    "typescript": "^5.8.3",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.3"
   }
 }

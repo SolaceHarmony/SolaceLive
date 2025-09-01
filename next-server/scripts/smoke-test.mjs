@@ -65,6 +65,14 @@ async function main() {
       console.log('✅ HF proxy test OK');
     }
 
+    // Probe weights introspection via Next
+    {
+      const r = await fetch('http://localhost:3000/api/test/weights');
+      const j = await r.json();
+      if (!j.ok) throw new Error(`Weights inspect via Next failed: ${JSON.stringify(j)}`);
+      console.log('✅ Weights inspect via Next OK');
+    }
+
     console.log('\nAll smoke tests passed.');
   } catch (e) {
     failed = true;
@@ -78,4 +86,3 @@ async function main() {
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
-

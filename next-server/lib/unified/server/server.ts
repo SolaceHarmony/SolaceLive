@@ -12,9 +12,10 @@ import fs from 'fs';
 
 // MLX + Moshi/Mimi (TypeScript)
 import mlx from '@frost-beta/mlx';
-import { Mimi, createMimiConfig } from '../../models/moshi-mlx/mimi';
-import { LmModel, createLmConfigFromDict } from '../../models/moshi-mlx/lm';
-import { validateFromConfig, loadLmWeightsSubset, loadAllLmWeights } from '../../models/moshi-mlx/weights/loader';
+import { Mimi, createMimiConfig } from '../models/moshi-mlx/mimi';
+import { LmModel, createLmConfigFromDict } from '../models/moshi-mlx/lm';
+import { validateFromConfig, loadLmWeightsSubset, loadAllLmWeights, resolveMimiWeights } from '../models/moshi-mlx/weights/loader';
+import { loadLmFromGGUF, createTextOnlyLmConfigFromGGUF } from '../models/gguf/gguf';
 
 // ===== Packet Protocol (same layout as client) =====
 enum PacketType {
@@ -96,6 +97,7 @@ class PacketWebSocketServer {
   private lm: LmModel;
   private textVocab: number;
   private audioCodebooks: number;
+  private padTextId: number = 0;
   private metrics = {
     encodeCount: 0,
     encodeTotalMs: 0,
@@ -126,14 +128,21 @@ class PacketWebSocketServer {
       },
       metrics: this.getMetrics()
     }));
+    this.app.get('/weights', (req, res) => {
+      const lm = (this.lm as any);
+      const info = typeof lm?.debugInfo === 'function' ? lm.debugInfo() : { ready: this.lm?.isReady?.() ?? false };
+      res.json({ lm: info, mimi: { ready: this.mimi?.isReady?.() ?? false } });
+    });
 
     // Initialize MLX-backed components synchronously on startup
     const cfgPath = path.join(process.cwd(), 'lib/unified/configs/moshi_mlx_2b.json');
     const raw = fs.readFileSync(cfgPath, 'utf-8');
     const cfgDict = JSON.parse(raw);
-    const lmCfg = createLmConfigFromDict(cfgDict);
+    // Default LM config from moshi file; may be overridden by GGUF path
+    let lmCfg = createLmConfigFromDict(cfgDict);
     this.textVocab = lmCfg.text_in_vocab_size;
     this.audioCodebooks = lmCfg.audio_codebooks;
+    this.padTextId = (cfgDict.existing_text_padding_id ?? 0) as number;
 
     this.mimi = new Mimi(createMimiConfig());
     this.lm = new LmModel(lmCfg);
@@ -141,21 +150,55 @@ class PacketWebSocketServer {
     // Validate and optionally load LM weights subset from HF if configured
     const lmRepo = process.env.LM_REPO;
     const mimiRepo = process.env.MIMI_REPO;
+    const mimiLocal = process.env.MIMI_LOCAL; // optional local Mimi/codec path (e.g., GGUF or safetensors)
     (async () => {
       try {
-        if (lmRepo && mimiRepo) {
-          await validateFromConfig(lmRepo, mimiRepo, cfgPath);
-          console.log('[PacketServer] Weights validation OK for repos', { lmRepo, mimiRepo });
-          const all = await loadAllLmWeights(lmRepo);
-          await this.lm.loadWeights(all);
-          console.log('[PacketServer] Loaded full LM weights');
+        const ggufPath = process.env.LM_GGUF;
+        if (ggufPath) {
+          console.log('[PacketServer] Using GGUF LM at', ggufPath);
+          const { weights, meta } = await loadLmFromGGUF(ggufPath);
+          lmCfg = createTextOnlyLmConfigFromGGUF(meta);
+          this.lm = new LmModel(lmCfg);
+          this.textVocab = lmCfg.text_in_vocab_size;
+          this.audioCodebooks = 0; // text-only mode
+          await this.lm.loadWeights(weights);
+          console.log('[PacketServer] GGUF LM loaded (text-only mode)');
+        } else if (lmRepo) {
+          if (mimiRepo) {
+            await validateFromConfig(lmRepo, mimiRepo, cfgPath);
+            try {
+              const mimiPath = await resolveMimiWeights(mimiRepo);
+              console.log('[PacketServer] Resolved Mimi weights from HF:', mimiPath);
+            } catch (e) {
+              console.warn('[PacketServer] Failed to resolve Mimi weights from HF:', (e as Error).message);
+            }
+          } else if (mimiLocal) {
+            // Local Mimi file present; validation/loading is a separate path
+            if (!fs.existsSync(mimiLocal)) {
+              throw new Error(`MIMI_LOCAL not found at ${mimiLocal}`);
+            }
+            try {
+              const mimiPath = await resolveMimiWeights(mimiLocal);
+              console.log('[PacketServer] Using local Mimi file:', mimiPath);
+            } catch (e) {
+              console.warn('[PacketServer] Failed to resolve local Mimi weights:', (e as Error).message);
+            }
+          } else {
+            console.warn('[PacketServer] MIMI_REPO/MIMI_LOCAL not set; Mimi not loaded (encode/decode will be unavailable)');
+          }
+          if (!ggufPath) {
+            console.log('[PacketServer] Weights validation OK for repos', { lmRepo, mimiRepo });
+            const all = await loadAllLmWeights(lmRepo);
+            await this.lm.loadWeights(all);
+            console.log('[PacketServer] Loaded full LM weights');
+          }
         } else {
-          console.error('[PacketServer] LM_REPO/MIMI_REPO not set; cannot start without weights');
-          process.exit(1);
+          console.warn('[PacketServer] LM_REPO not set and no LM_GGUF; starting in degraded mode (models not ready).');
+          // Server will run; model calls will throw until weights are loaded.
         }
       } catch (e) {
-        console.error('[PacketServer] Weight validation/loading failed:', e);
-        process.exit(1);
+        console.warn('[PacketServer] Weight validation/loading failed; continuing in degraded mode:', e);
+        // Do not exit; health endpoint will report readiness=false.
       }
     })();
 
@@ -168,7 +211,6 @@ class PacketWebSocketServer {
       const id = 'client_' + Math.random().toString(36).slice(2, 9);
       console.log(`[PacketServer] Client ${id} connected`);
 
-      const padId: number = (cfgDict.existing_text_padding_id ?? 0);
       const state: ClientState = {
         id,
         seq: 0,
@@ -177,7 +219,7 @@ class PacketWebSocketServer {
         audioCodes: Array.from({ length: this.audioCodebooks }, () => []),
         generatedAudio: Array.from({ length: this.audioCodebooks }, () => []),
         prevAudioLengths: Array.from({ length: this.audioCodebooks }, () => 0),
-        padTextId: padId,
+        padTextId: this.padTextId,
         lmCache: new Map<string, any>(),
       };
       this.clients.set(id, { ws, state });
@@ -266,42 +308,53 @@ class PacketWebSocketServer {
     if (newSteps <= 0) return;
     const mx = mlx.core;
     for (let s = 0; s < newSteps; s++) {
-      const textToken = mx.array([[state.padTextId]]);
-      const audioStep: any[] = [];
-      for (let cb = 0; cb < this.audioCodebooks; cb++) {
-        const idx = (state.prevAudioLengths[cb] ?? 0) + s;
-        const tok = state.audioCodes[cb][idx] ?? 0;
-        audioStep.push(mx.array([[tok]]));
-      }
       try {
         const tStep0 = Date.now();
-        const { next_text, next_audio } = this.lm.step(textToken, audioStep, state.lmCache);
-        const stepMs = Date.now() - tStep0;
-        this.metrics.stepCount++;
-        this.metrics.stepTotalMs += stepMs;
-        this.metrics.lastStepMs = stepMs;
-        if (stepMs > this.STEP_BUDGET_MS) this.metrics.overBudgetCount++;
-        // Append generated tokens
-        for (let cb = 0; cb < next_audio.length; cb++) {
-          const v = (next_audio[cb].tolist() as number[][])[0][0];
-          state.generatedAudio[cb].push(v);
+        if (this.usingLlama && this.llama) {
+          const lastTok = state.textTokens.length ? state.textTokens[state.textTokens.length - 1] : state.padTextId;
+          const logits = this.llama.forwardTokenIds([lastTok], state.textTokens.length, state.lmCache as unknown as Map<number, Map<string, any>>);
+          const last = logits.index([0, -1, null]);
+          const nextId = (mx.argmax(last, -1).tolist() as number[])[0] as number;
+          state.textTokens.push(nextId);
+          const stepMs = Date.now() - tStep0;
+          this.metrics.stepCount++;
+          this.metrics.stepTotalMs += stepMs;
+          this.metrics.lastStepMs = stepMs;
+          if (stepMs > this.STEP_BUDGET_MS) this.metrics.overBudgetCount++;
+          this.sendTextPartial(ws, String(nextId));
+        } else {
+          const textToken = mx.array([[state.padTextId]]);
+          const audioStep: any[] = [];
+          for (let cb = 0; cb < this.audioCodebooks; cb++) {
+            const idx = (state.prevAudioLengths[cb] ?? 0) + s;
+            const tok = state.audioCodes[cb][idx] ?? 0;
+            audioStep.push(mx.array([[tok]]));
+          }
+          const { next_text, next_audio } = this.lm.step(textToken, audioStep, state.lmCache);
+          const stepMs = Date.now() - tStep0;
+          this.metrics.stepCount++;
+          this.metrics.stepTotalMs += stepMs;
+          this.metrics.lastStepMs = stepMs;
+          if (stepMs > this.STEP_BUDGET_MS) this.metrics.overBudgetCount++;
+          for (let cb = 0; cb < next_audio.length; cb++) {
+            const v = (next_audio[cb].tolist() as number[][])[0][0];
+            state.generatedAudio[cb].push(v);
+          }
+          const textId = (next_text.tolist() as number[][])[0][0];
+          this.sendTextPartial(ws, String(textId));
+          try {
+            const perCb = state.generatedAudio.map(arr => [arr[arr.length - 1]]);
+            const tDec0 = Date.now();
+            const audioFrame = await this.mimi.decode(perCb);
+            const decMs = Date.now() - tDec0;
+            this.metrics.decodeCount++;
+            this.metrics.decodeTotalMs += decMs;
+            this.metrics.lastDecodeMs = decMs;
+            if (audioFrame && audioFrame.length) this.sendAudio(ws, audioFrame);
+          } catch {}
         }
-        // Optional: stream text id
-        const textId = (next_text.tolist() as number[][])[0][0];
-        this.sendTextPartial(ws, String(textId));
-
-        // Decode and stream a single audio frame
-        try {
-          const perCb = state.generatedAudio.map(arr => [arr[arr.length - 1]]);
-          const tDec0 = Date.now();
-          const audioFrame = await this.mimi.decode(perCb);
-          const decMs = Date.now() - tDec0;
-          this.metrics.decodeCount++;
-          this.metrics.decodeTotalMs += decMs;
-          this.metrics.lastDecodeMs = decMs;
-          if (audioFrame && audioFrame.length) this.sendAudio(ws, audioFrame);
-        } catch {}
-      } catch {
+      } catch (e) {
+        console.error('[PacketServer] stepGenerate error:', e);
         break;
       }
     }
@@ -335,6 +388,10 @@ class PacketWebSocketServer {
     };
   }
   private computeNewSteps(state: ClientState): number {
+    if (this.audioCodebooks === 0) {
+      // Text-only mode: advance one step per tick
+      return 1;
+    }
     let minNew = Infinity;
     for (let cb = 0; cb < this.audioCodebooks; cb++) {
       const cur = state.audioCodes[cb].length;

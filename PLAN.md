@@ -128,3 +128,18 @@ Notes:
 - Under nominal load, mic→speaker latency ≤ 200 ms; underruns < 1%.
 - HF proxy reachable and used for browser model prefetch; WhisperX runs in‑browser.
 - Architecture and plan remain coherent with code (filepaths + contracts verified by smoke tests).
+
+
+## Getting Started Workboard (Day 0–1)
+
+Status update (2025-09-01 02:52 local)
+- [x] Verified Next API test endpoints exist: `/api/test/packet-health`, `/api/test/hf-proxy`
+- [x] Verified HF proxy route exists: `pages/api/hf/[...path].ts`
+- [x] Confirmed npm scripts: `packet:server`, `dev`, `smoke`
+- [x] Updated README to align with packetized plan and ARCHITECTURE
+- [ ] Run smoke locally and record initial `/health` payload
+- [ ] Weights work: begin safetensors loader scaffolding and throw-on-missing enforcement checks
+
+Next up (immediate)
+- Implement safetensors loader paths: `LmModel.loadWeights()`, `Mimi.loadWeights()`
+- Expose basic step latency counters in `lib/unified/server/server.ts` `/health`

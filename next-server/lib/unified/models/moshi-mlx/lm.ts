@@ -62,6 +62,7 @@ export class LmModel {
   private text_out_head: mx.array | null = null;
   private audio_out_heads: mx.array[] = [];
   private weightsLoaded = false;
+  private transformerLayerParamsCount: number[] = [];
 
   constructor(config: LmConfig) {
     this.config = config;
@@ -96,28 +97,97 @@ export class LmModel {
     }
 
     const transformer_weights = new Map<string, Map<string, mx.array>>();
+    function ensureLayer(idx: number) {
+      if (!transformer_weights.has(`layer_${idx}`)) transformer_weights.set(`layer_${idx}`, new Map());
+    }
+    function normalizeParamPath(p: string): string {
+      // Map common aliases to our internal names
+      // attention block
+      if (p.startsWith('self_attention.')) p = p.replace('self_attention.', 'self_attn.');
+      if (p.startsWith('attention.')) p = p.replace('attention.', 'self_attn.');
+      if (p.startsWith('attn.')) p = p.replace('attn.', 'self_attn.');
+      if (p.startsWith('mha.')) p = p.replace('mha.', 'self_attn.');
+      // mlp block
+      if (p.startsWith('ffn.')) p = p.replace('ffn.', 'mlp.');
+      if (p.startsWith('feed_forward.')) p = p.replace('feed_forward.', 'mlp.');
+      return p;
+    }
     if (weights) {
       for (const [key, value] of weights) {
+        let consumed = false;
         if (key.startsWith('transformer.')) {
           const parts = key.replace('transformer.', '').split('.');
           const layer_idx = parseInt(parts[0]);
           const param_name = parts.slice(1).join('.');
-          
-          if (!transformer_weights.has(`layer_${layer_idx}`)) {
-            transformer_weights.set(`layer_${layer_idx}`, new Map());
-          }
-          transformer_weights.get(`layer_${layer_idx}`)!.set(param_name, value);
+          ensureLayer(layer_idx);
+          transformer_weights.get(`layer_${layer_idx}`)!.set(normalizeParamPath(param_name), value);
+          consumed = true;
+        }
+        if (!consumed && key.startsWith('layers.')) {
+          // e.g., layers.0.self_attn.q_proj.weight
+          const parts = key.replace('layers.', '').split('.');
+          const layer_idx = parseInt(parts[0]);
+          const param_name = parts.slice(1).join('.');
+          ensureLayer(layer_idx);
+          transformer_weights.get(`layer_${layer_idx}`)!.set(normalizeParamPath(param_name), value);
+          consumed = true;
+        }
+        if (!consumed && key.startsWith('model.layers.')) {
+          const parts = key.replace('model.layers.', '').split('.');
+          const layer_idx = parseInt(parts[0]);
+          const param_name = parts.slice(1).join('.');
+          ensureLayer(layer_idx);
+          transformer_weights.get(`layer_${layer_idx}`)!.set(normalizeParamPath(param_name), value);
+          consumed = true;
         }
       }
     }
     await this.transformer.init(transformer_weights);
+    // Optional final transformer norm weight
+    const finalNorm = weights?.get('transformer.norm.weight')
+                  || weights?.get('model.norm.weight')
+                  || weights?.get('output_norm.weight')
+                  || weights?.get('norm.weight');
+    if (finalNorm) {
+      this.transformer.setFinalNormWeight(finalNorm as any);
+    }
+    // capture simple per-layer param counts for debugging/health
+    this.transformerLayerParamsCount = [];
+    for (let i = 0; i < this.config.transformer.num_layers; i++) {
+      const m = transformer_weights.get(`layer_${i}`);
+      this.transformerLayerParamsCount.push(m ? m.size : 0);
+    }
 
-    this.text_out_head = weights?.get('text_out_head.weight') || null;
+    const toh = weights?.get('text_out_head.weight') || null;
+    if (toh) {
+      const w = toh as any;
+      const shp = w.shape as number[];
+      const d_model = this.config.transformer.d_model;
+      const vocab = this.config.text_out_vocab_size;
+      // Orient to [vocab, d_model]
+      if (shp.length === 2) {
+        if (shp[0] === vocab && shp[1] === d_model) this.text_out_head = w;
+        else if (shp[0] === d_model && shp[1] === vocab) this.text_out_head = mx.transpose(w, [1, 0]);
+        else this.text_out_head = w; // leave as-is; matmul path may fail if mismatched
+      } else {
+        this.text_out_head = w;
+      }
+    }
 
     for (let i = 0; i < this.config.audio_codebooks; i++) {
       const w = weights?.get(`audio_out_heads.${i}.weight`);
       if (w) {
-        this.audio_out_heads.push(w);
+        const ww = w as any;
+        const shp = ww.shape as number[];
+        const d_model = this.config.transformer.d_model;
+        const vocab = this.config.audio_vocab_size;
+        if (shp.length === 2) {
+          if (shp[0] === vocab && shp[1] === d_model) this.audio_out_heads.push(ww);
+          else if (shp[0] === d_model && shp[1] === vocab) this.audio_out_heads.push(mx.transpose(ww, [1, 0]));
+          else this.audio_out_heads.push(ww);
+        } else {
+          this.audio_out_heads.push(ww);
+        }
       }
     }
     if (weights && (this.text_out_head || this.audio_out_heads.length > 0)) {
@@ -136,6 +206,21 @@ export class LmModel {
 
   isReady(): boolean {
     return this.weightsLoaded;
+  }
+
+  debugInfo(): Record<string, unknown> {
+    return {
+      ready: this.weightsLoaded,
+      text_out_head: this.text_out_head ? (this.text_out_head as any).shape : null,
+      audio_out_heads: this.audio_out_heads.map((h) => (h as any).shape),
+      audio_codebooks: this.config.audio_codebooks,
+      transformer: {
+        num_layers: this.config.transformer.num_layers,
+        d_model: this.config.transformer.d_model,
+        num_heads: this.config.transformer.num_heads,
+        layer_param_counts: this.transformerLayerParamsCount,
+      },
+    };
   }
 
   private createCausalMask(seq_len: number): mx.array {

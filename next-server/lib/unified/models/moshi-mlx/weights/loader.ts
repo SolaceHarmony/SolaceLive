@@ -71,6 +71,34 @@ export async function validateMimiWeightsFromHF(repo: string): Promise<void> {
   if (!found) throw new Error(`No Mimi/tokenizer safetensors found in ${repo}`);
 }
 
+/**
+ * Resolve a Mimi/tokenizer safetensors file either from a local path or HF repo.
+ * Returns the local filesystem path to the selected file. Does not parse or load tensors.
+ */
+export async function resolveMimiWeights(repoOrLocal: string): Promise<string> {
+  // Direct local path
+  try {
+    const st = await fs.stat(repoOrLocal);
+    if (st.isFile()) return repoOrLocal;
+  } catch {}
+  // Probe common filenames in HF repo
+  const candidates = [
+    'tokenizer.safetensors',
+    'mimi.safetensors',
+    'tokenizer-e351c8d8-checkpoint125.safetensors',
+  ];
+  for (const f of candidates) {
+    try {
+      const p = await hfGet(f, repoOrLocal);
+      const st = await fs.stat(p);
+      if (st.isFile() && st.size > 0) return p;
+    } catch {
+      // try next
+    }
+  }
+  throw new Error(`resolveMimiWeights: no safetensors found for ${repoOrLocal}`);
+}
+
 export async function validateFromConfig(lmRepo: string, mimiRepo: string, cfgPath: string): Promise<void> {
   const cfg = await readJson(cfgPath) as any;
   // Construct LmConfig subset used by validator

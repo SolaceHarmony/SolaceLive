@@ -1,4 +1,6 @@
-# CSM Model Integration Plan
+<!-- Legacy/Experimental Notice: This document predates the current packetized Next.js + MLX architecture. See PLAN.md and ARCHITECTURE.md for the canonical plan. Keep this document for experiments; it is not in the critical path. -->
+
+# CSM Model Integration Plan (Legacy/Experimental)
 
 ## Model Setup (Step 1-2)
 1. **Import GGUF into Ollama**
