@@ -39,6 +39,20 @@ export class Mimi {
 
   private weightsLoaded = false;
 
+  /** Debug info for health/weights endpoints. */
+  debugInfo(): Record<string, unknown> {
+    return {
+      ready: this.weightsLoaded,
+      sample_rate: this.sample_rate,
+      frame_rate: this.frame_rate,
+      frame_size: this.frame_size,
+      n_q: this.n_q,
+      vocab_size: this.vocab_size,
+      streaming: this.streamingMode,
+      batchSize: this.batchSize,
+    };
+  }
+
   constructor(cfg?: Partial<MimiConfig>) {
     const c = {
       channels: 1,

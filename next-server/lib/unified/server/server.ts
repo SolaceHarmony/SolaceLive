@@ -131,7 +131,9 @@ class PacketWebSocketServer {
     this.app.get('/weights', (req, res) => {
       const lm = (this.lm as any);
       const info = typeof lm?.debugInfo === 'function' ? lm.debugInfo() : { ready: this.lm?.isReady?.() ?? false };
-      res.json({ lm: info, mimi: { ready: this.mimi?.isReady?.() ?? false } });
+      const mimiAny = (this.mimi as any);
+      const mimiInfo = typeof mimiAny?.debugInfo === 'function' ? mimiAny.debugInfo() : { ready: this.mimi?.isReady?.() ?? false };
+      res.json({ lm: info, mimi: mimiInfo });
     });
 
     // Initialize MLX-backed components synchronously on startup
@@ -169,6 +171,12 @@ class PacketWebSocketServer {
             try {
               const mimiPath = await resolveMimiWeights(mimiRepo);
               console.log('[PacketServer] Resolved Mimi weights from HF:', mimiPath);
+              try {
+                await this.mimi.loadWeights(mimiPath);
+                console.log('[PacketServer] Mimi weights loaded');
+              } catch (err) {
+                console.warn('[PacketServer] Mimi.loadWeights failed:', (err as Error).message);
+              }
             } catch (e) {
               console.warn('[PacketServer] Failed to resolve Mimi weights from HF:', (e as Error).message);
             }
@@ -180,6 +188,12 @@ class PacketWebSocketServer {
             try {
               const mimiPath = await resolveMimiWeights(mimiLocal);
               console.log('[PacketServer] Using local Mimi file:', mimiPath);
+              try {
+                await this.mimi.loadWeights(mimiPath);
+                console.log('[PacketServer] Mimi weights loaded from local path');
+              } catch (err) {
+                console.warn('[PacketServer] Mimi.loadWeights (local) failed:', (err as Error).message);
+              }
             } catch (e) {
               console.warn('[PacketServer] Failed to resolve local Mimi weights:', (e as Error).message);
             }

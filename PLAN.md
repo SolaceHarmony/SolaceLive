@@ -132,14 +132,61 @@ Notes:
 
 ## Getting Started Workboard (Day 0–1)
 
-Status update (2025-09-01 02:52 local)
+Status update (2025-09-01 03:17 local)
 - [x] Verified Next API test endpoints exist: `/api/test/packet-health`, `/api/test/hf-proxy`
 - [x] Verified HF proxy route exists: `pages/api/hf/[...path].ts`
 - [x] Confirmed npm scripts: `packet:server`, `dev`, `smoke`
 - [x] Updated README to align with packetized plan and ARCHITECTURE
-- [ ] Run smoke locally and record initial `/health` payload
+- [x] Run smoke locally and record initial `/health` payload
 - [ ] Weights work: begin safetensors loader scaffolding and throw-on-missing enforcement checks
 
 Next up (immediate)
 - Implement safetensors loader paths: `LmModel.loadWeights()`, `Mimi.loadWeights()`
-- Expose basic step latency counters in `lib/unified/server/server.ts` `/health`
+- [x] Expose basic step latency counters in `lib/unified/server/server.ts` `/health` (present)
+
+
+## Next 3–5 Days (2025-09-01 03:03 local)
+
+- Weights loading (server-side first)
+  - Implement safetensors loading for LM/Mimi via existing loaders; validate shapes against moshi_mlx_2b.json; fail fast on mismatch.
+  - Wire Mimi.loadWeights() using HF proxy or local path (MIMI_REPO or MIMI_LOCAL). Ensure Mimi.isReady() reflects state. 
+- Acoustic delays in LM
+  - Apply delays from moshi_mlx_2b.json in LmModel.step() alignment; keep cache consistent; log effective delay.
+- Telemetry additions
+  - Expose queue depth and underrun counters alongside existing encode/step/decode timings in /health.
+- Smoke gating
+  - Run npm -C next-server run smoke and ensure: /health ok, /api/test/hf-proxy ok, /api/test/weights ok. Record snapshot.
+
+### Developer Environment Checklist
+
+- LM weights: set LM_REPO (HF repo id) or LM_GGUF (absolute file path) for text-only mode.
+- Mimi weights: set one of MIMI_REPO (HF repo id) or MIMI_LOCAL (absolute file path).
+- HF_TOKEN: server-side for /api/hf proxy access to gated repos.
+- NEXT_PUBLIC_HF_MIRROR=/api/hf recommended for browser model asset mirroring.
+- NEXT_PUBLIC_PACKET_WS=ws://localhost:8788 if non-default.
+
+Quick verify
+- curl http://localhost:8788/weights → should return both lm and mimi objects. Example (degraded mode):
+
+```
+{
+  "lm": { "ready": false, "transformer": { "num_layers": 0, "d_model": 0, "num_heads": 0, "layer_param_counts": [] } },
+  "mimi": { "ready": false, "sample_rate": 24000, "frame_rate": 12.5, "frame_size": 1920, "n_q": 8, "vocab_size": 2048, "streaming": false, "batchSize": 1 }
+}
+```
+
+Example /health payload (initial, degraded):
+
+```
+{
+  "status": "healthy",
+  "clients": 0,
+  "uptime": 12.3,
+  "readiness": { "lm": false, "mimi": false },
+  "metrics": {
+    "encode": { "count": 0, "avgMs": 0, "lastMs": 0 },
+    "step": { "count": 0, "avgMs": 0, "lastMs": 0, "overBudget": 0, "budgetMs": 80 },
+    "decode": { "count": 0, "avgMs": 0, "lastMs": 0 }
+  }
+}
+```
