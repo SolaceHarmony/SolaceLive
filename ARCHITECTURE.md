@@ -183,3 +183,29 @@ npm run dev             # http://localhost:3000
 ### Resource Targets (Guidance)
 - **Server**: Keep per-step encode+step+decode << 80 ms on target hardware (aim for 10–30 ms). Log when budget exceeded.
 - **Client**: Avoid audio work on the main thread where possible; keep frame capture and playback lightweight.
+
+## CSM Integration Path (Adapter)
+- CSM is a Sesame Conversational Speech Model that generates Mimi RVQ audio codes from text/audio using a Llama backbone plus an audio decoder. As of 2025‑05‑20 it is available in Hugging Face Transformers (>= 4.52.1).
+- SolaceLive integrates CSM via a server‑side adapter while keeping the core stack Next.js + TypeScript MLX.
+
+Adapter modes
+- Local sidecar (recommended): run the official Python/Transformers service on CUDA; expose HTTP endpoints that return Mimi codes or 24 kHz PCM.
+- Hosted Space: point the adapter to a HF Space exposing the same API.
+
+Contract (suggested)
+- Request: { text: string; speaker?: number; context?: Array<{ text?: string; speaker?: number; audio?: base64 }>; max_audio_length_ms?: number }
+- Response (either):
+  - { type: "mimi_codes", n_q, sample_rate: 24000, frame_rate: 12.5, codes: number[][] }
+  - { type: "audio_pcm", sample_rate: 24000, pcm: base64(Float32Array) }
+
+Routing
+- mimi_codes → decode via server Mimi backend → stream 80 ms AUDIO_CHUNK frames.
+- audio_pcm → frame directly into 1920‑sample chunks and stream.
+
+Notes
+- GGUF in this repo is for LM text‑only experiments and is unrelated to Mimi. The real‑time voice loop requires Mimi encode/decode via a real backend.
+
+
+## Local references
+- original_csm/: Snapshot of the original CSM codebase included in this repository for reference and future integration.
+- models/: Contains local model artifacts. The .gguf file here corresponds to the included CSM model and is used in this repo for LM text-only experiments (unrelated to Mimi).

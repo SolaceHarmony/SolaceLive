@@ -23,29 +23,45 @@ export class RotaryEmbedding {
     // positions: length T (global positions)
     const headDim = this.dim;
     const half = Math.floor(headDim / 2);
-    const invFreq = mx.array(Array.from({ length: half }, (_, i) => 1.0 / Math.pow(this.base, (i * 2) / headDim)));
+    // invFreq: [half] as float32
+    const inv = new Float32Array(half);
+    for (let i = 0; i < half; i++) inv[i] = 1.0 / Math.pow(this.base, (i * 2) / headDim);
+    const invFreq = mx.array(Array.from(inv)).reshape([half]);
     // theta: [T, half]
-    const pos = mx.array(positions).reshape([positions.length, 1]);
+    const posF32 = new Float32Array(positions.length);
+    for (let i = 0; i < positions.length; i++) posF32[i] = positions[i];
+    const pos = mx.array(Array.from(posF32)).reshape([positions.length, 1]);
     const theta = mx.multiply(pos, invFreq.reshape([1, half]));
     const cos = (mx as any).cos ? (mx as any).cos(theta) : mx.cos(theta); // [T, half]
     const sin = (mx as any).sin ? (mx as any).sin(theta) : mx.sin(theta); // [T, half]
 
     function rope(x: any) {
       // x: [B, H, T, D]
-      const B = x.shape[0];
-      const H = x.shape[1];
-      const Tn = x.shape[2];
-      const sliceFn = (mx as any).slice ? (mx as any).slice : (t: any, spec: any) => (t.slice ? t.slice(spec) : null);
-      const x1 = sliceFn(x, [null, null, null, [0, half]]);    // [B, H, T, half]
-      const x2 = sliceFn(x, [null, null, null, [half, headDim]]); // [B, H, T, half]
-      if (!x1 || !x2) {
-        throw new Error('MLX slice unavailable for RoPE');
+      const B = x.shape[0], H = x.shape[1], Tn = x.shape[2], D = x.shape[3];
+      // Convert to JS arrays for a portable RoPE computation
+      const xList = (x as any).tolist() as number[][][][];
+      const cosList = (cos as any).tolist() as number[][]; // [T, half]
+      const sinList = (sin as any).tolist() as number[][]; // [T, half]
+      const out = new Float32Array(B * H * Tn * D);
+      let p = 0;
+      for (let b = 0; b < B; b++) {
+        for (let h = 0; h < H; h++) {
+          for (let t = 0; t < Tn; t++) {
+            for (let i = 0; i < half; i++) {
+              const v1 = xList[b][h][t][i];
+              const v2 = xList[b][h][t][i + half];
+              const c = cosList[t][i];
+              const s = sinList[t][i];
+              const xr = v1 * c - v2 * s;
+              const xi = v1 * s + v2 * c;
+              out[p + i] = xr;
+              out[p + i + half] = xi;
+            }
+            p += D;
+          }
+        }
       }
-      const cosB = mx.reshape(cos, [1, 1, Tn, half]);
-      const sinB = mx.reshape(sin, [1, 1, Tn, half]);
-      const xr = mx.subtract(mx.multiply(x1, cosB), mx.multiply(x2, sinB));
-      const xi = mx.add(mx.multiply(x1, sinB), mx.multiply(x2, cosB));
-      return mx.concatenate([xr, xi], 3);
+      return mx.array(Array.from(out)).reshape([B, H, Tn, D]);
     }
 
     return { q: rope(q), k: rope(k) };

@@ -14,14 +14,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Construct absolute URL to our own proxy route
   const proto = (req.headers['x-forwarded-proto'] as string) || 'http';
   const host = req.headers.host || 'localhost:3000';
-  const url = `${proto}://${host}/api/hf/${path.replace(/^\/+/, '')}`;
+  const base = `${proto}://${host}`;
+  const url = `${base}/api/hf/${path.replace(/^\/+/, '')}`;
 
   try {
-    const upstream = await fetch(url, { method: 'HEAD' });
-    return res.status(200).json({ ok: upstream.ok, status: upstream.status, url });
+    const upstream = await globalThis.fetch(url, { method: 'HEAD' });
+    return res.status(200).json({ ok: upstream.ok, status: upstream.status, url, base });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return res.status(502).json({ ok: false, error: message, url });
+    return res.status(502).json({ ok: false, error: message, url, base });
   }
 }
 

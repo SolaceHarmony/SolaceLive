@@ -11,6 +11,7 @@ import path from 'path';
 import fs from 'fs';
 import { Buffer } from 'buffer';
 import { TextEncoder } from 'util';
+import { setInterval as setNodeInterval, clearInterval as clearNodeInterval } from 'node:timers';
 
 // MLX + Moshi/Mimi (TypeScript)
 import mlx from '@frost-beta/mlx';
@@ -141,6 +142,56 @@ class PacketWebSocketServer {
       res.json({ lm: info, mimi: mimiInfo });
     });
 
+    // LM profiling endpoint: measures per-step latency for text generation
+    this.app.get('/profile/lm', async (req, res) => {
+      try {
+        if (!(this.lm?.isReady?.())) {
+          return res.status(503).json({ ok: false, error: 'LM not ready' });
+        }
+        const steps = Math.max(1, Math.min(1000, parseInt(String(req.query.steps ?? '16'), 10) || 16));
+        const warmup = Math.max(0, Math.min(100, parseInt(String(req.query.warmup ?? '2'), 10) || 2));
+        const returnPerStep = String(req.query.timer ?? req.query.debug ?? '1') !== '0';
+
+        const mx = mlx.core;
+        const tokens: number[] = [];
+        const perStepMs: number[] = [];
+        const cache = new Map<string, any>();
+        cache.set('transformer', new Map<number, Map<string, any>>());
+
+        // Prepare static audio tokens per codebook (zeros) if any codebooks exist
+        const audioTokens: any[] = [];
+        for (let cb = 0; cb < this.audioCodebooks; cb++) {
+          audioTokens.push(mx.array([[0]], 'int32'));
+        }
+        // Initial text token: padTextId
+        let text = mx.array([[this.padTextId | 0]], 'int32');
+
+        // Warmup iterations (don’t time)
+        for (let i = 0; i < warmup; i++) {
+          const { next_text } = this.lm.step(text, audioTokens, cache);
+          text = mx.expand_dims(next_text, 1);
+        }
+
+        const tAll0 = Date.now();
+        for (let i = 0; i < steps; i++) {
+          const t0 = Date.now();
+          const { next_text } = this.lm.step(text, audioTokens, cache);
+          const dt = Date.now() - t0;
+          if (returnPerStep) perStepMs.push(dt);
+          const id = (next_text.tolist() as number[][])[0][0];
+          tokens.push(id);
+          text = mx.expand_dims(next_text, 1);
+        }
+        const totalMs = Date.now() - tAll0;
+        const avgMs = returnPerStep && perStepMs.length > 0 ? perStepMs.reduce((a, b) => a + b, 0) / perStepMs.length : (steps ? totalMs / steps : 0);
+
+        return res.json({ ok: true, steps, warmup, totalMs, avgMs, perStepMs: returnPerStep ? perStepMs : undefined, tokens });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return res.status(500).json({ ok: false, error: message });
+      }
+    });
+
     // Initialize MLX-backed components synchronously on startup
     const cfgPath = path.join(process.cwd(), 'lib/unified/configs/moshi_mlx_2b.json');
     const raw = fs.readFileSync(cfgPath, 'utf-8');
@@ -257,6 +308,13 @@ class PacketWebSocketServer {
         sampleRate: SAMPLE_RATE,
       });
 
+      // Periodic heartbeat (every 5s)
+      const hb = setNodeInterval(() => {
+        try { this.sendHeartbeat(ws); } catch (err) {
+          console.warn('[PacketServer] Heartbeat send failed:', (err as Error).message);
+        }
+      }, 5000);
+
       ws.on('message', async (data: Buffer) => {
         try {
           const pkt = PacketCodec.decode(data);
@@ -269,6 +327,7 @@ class PacketWebSocketServer {
 
       ws.on('close', () => {
         console.log(`[PacketServer] Client ${id} disconnected`);
+        clearNodeInterval(hb);
         this.clients.delete(id);
       });
     });
@@ -301,6 +360,7 @@ class PacketWebSocketServer {
         } catch (e) {
           // No simulation: if encode not available, skip audio update
           console.warn('[PacketServer] Mimi.encode unavailable:', (e as Error).message);
+          this.metrics.underrunCount++;
         }
         // Drive MLX generation step
         await this.stepGenerate(ws, state);
@@ -333,12 +393,12 @@ class PacketWebSocketServer {
     for (let s = 0; s < newSteps; s++) {
       try {
         const tStep0 = Date.now();
-          const textToken = mx.array([[state.padTextId]]);
+          const textToken = mx.array([[state.padTextId]], 'int32');
           const audioStep: any[] = [];
           for (let cb = 0; cb < this.audioCodebooks; cb++) {
             const idx = (state.prevAudioLengths[cb] ?? 0) + s;
             const tok = state.audioCodes[cb][idx] ?? 0;
-            audioStep.push(mx.array([[tok]]));
+            audioStep.push(mx.array([[tok]], 'int32'));
           }
           const { next_text, next_audio } = this.lm.step(textToken, audioStep, state.lmCache);
           const stepMs = Date.now() - tStep0;
@@ -360,9 +420,14 @@ class PacketWebSocketServer {
             this.metrics.decodeCount++;
             this.metrics.decodeTotalMs += decMs;
             this.metrics.lastDecodeMs = decMs;
-            if (audioFrame && audioFrame.length) this.sendAudio(ws, audioFrame);
+            if (audioFrame && audioFrame.length) {
+              this.sendAudio(ws, audioFrame);
+            } else {
+              this.metrics.underrunCount++;
+            }
           } catch (err) {
             console.warn('[PacketServer] Mimi.decode unavailable:', (err as Error).message);
+            this.metrics.underrunCount++;
           }
       } catch (e) {
         console.error('[PacketServer] stepGenerate error:', e);

@@ -48,8 +48,8 @@
 - [x] HF proxy + mirror support; smoke tests and test endpoints
 - [x] Browser WhisperX demo + partials toggle in packet UI
 - [ ] Safetensors weight loaders for Moshi/Mimi; wire `loadWeights()`
-- [ ] Apply `delays` in `LmModel.step()` and validate alignment
-- [ ] Add metrics (step latency, queue depth, underruns) to `/health`
+- [x] Apply `delays` in `LmModel.step()` and validate alignment
+- [x] Add metrics (step latency, queue depth, underruns) to `/health`
 - [ ] E2E validation against success metrics (< 200 ms, underruns < 1%)
 - [ ] Deployment docs + simple configuration guide
 - [ ] Archive/experiments relocation (see below)

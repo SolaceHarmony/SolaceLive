@@ -184,26 +184,31 @@ export class LlamaModel {
     let x: any;
     const T = tokenIds.length;
     const D = this.cfg.d_model;
-    const tokIdx = mx.array(tokenIds).reshape([T]);
-    if (typeof (mx as any).take === 'function') {
-      const rows = (mx as any).take(this.tokEmb!, tokIdx, 0); // [T, D]
-      x = mx.reshape(rows, [1, T, D]);
-    } else if (typeof (mx as any).gather === 'function') {
-      // Some backends expose gather along axis 0 with 1D indices
-      const rows = (mx as any).gather(this.tokEmb!, tokIdx, 0); // [T, D]
-      x = mx.reshape(rows, [1, T, D]);
-    } else {
-      // Fallback: slice each row and concatenate using MLX tensors (no numeric tolist())
-      const sliceFn = (mx as any).slice ? (mx as any).slice : (t: any, spec: any) => (t.slice ? t.slice(spec) : null);
-      const rows: any[] = [];
+    // Deterministic embedding gather: prefer instance slice; fallback to JS list gather
+    const arrAny: any = this.tokEmb! as any;
+    let rows: any;
+    if (typeof arrAny.slice === 'function') {
+      const parts: any[] = [];
       for (let i = 0; i < T; i++) {
-        const s = sliceFn(this.tokEmb!, [[tokenIds[i], tokenIds[i] + 1], null]); // [1, D]
-        if (!s) throw new Error('Embedding slice not supported by MLX backend');
-        rows.push(mx.reshape(s, [D]));
+        const s = arrAny.slice([[tokenIds[i], tokenIds[i] + 1], null]); // [1, D]
+        parts.push(mx.reshape(s, [D]));
       }
-      const mat = mx.concatenate(rows, 0); // [T, D]
-      x = mx.reshape(mat, [1, T, D]);
+      rows = mx.concatenate(parts, 0); // [T, D]
+    } else {
+      const list = (this.tokEmb as any).tolist?.();
+      if (!Array.isArray(list)) throw new Error('Embedding gather fallback failed: tolist() not available');
+      const selected: number[][] = [];
+      for (let i = 0; i < T; i++) {
+        const id = tokenIds[i] | 0;
+        const row = list[id];
+        if (!Array.isArray(row) || row.length !== D) {
+          throw new Error(`Embedding row ${id} unavailable or wrong dim`);
+        }
+        selected.push(row);
+      }
+      rows = mx.array(selected).reshape([T, D]);
     }
+    x = mx.reshape(rows, [1, T, D]);
     let h = x;
     for (let i=0;i<this.layers.length;i++) {
       const layerCache = cache?.get(i) ?? new Map<string, any>();

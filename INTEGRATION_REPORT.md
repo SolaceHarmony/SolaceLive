@@ -1,5 +1,18 @@
 # Neuromorphic Voice Interface - Integration Report
 
+## 2025-09-01 Packet Path Update
+- Implemented periodic WS HEARTBEAT broadcast every 5s per active client in `next-server/lib/unified/server/server.ts` using Node timers, aligned with Packet Protocol in ARCHITECTURE.md.
+- Improved observability: `/health` now reflects underruns by incrementing `metrics.step.underruns` when:
+  - Mimi.encode fails (weights missing/not ready or backend unavailable),
+  - Mimi.decode fails, or
+  - Mimi.decode returns an empty frame (no audio produced for a step).
+- Build verified OK via project build tool; server remains non-simulating—model calls still throw unless real weights are loaded.
+- No changes to contracts: 24kHz, 80 ms steps, packet header, and per-step LM API unchanged.
+
+Action items remaining (per PLAN.md):
+- Safetensors weight loader wiring for Mimi backend (server-side decode/encode remains intentionally unimplemented in TypeScript layer; integrate real backend/bindings).
+- E2E validation targets and deployment docs.
+
 ## 🎯 Project Overview
 
 Successfully implemented a neuromorphic consciousness layer over the Moshi voice model, creating a biologically-inspired voice inference platform with real-time performance monitoring and consciousness simulation.

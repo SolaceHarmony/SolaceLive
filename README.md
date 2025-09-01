@@ -10,8 +10,12 @@ Quickstart (current stack)
 
 Key environment variables
 - NEXT_PUBLIC_PACKET_WS (default ws://localhost:8788)
-- HF_TOKEN (server-side for /api/hf proxy); NEXT_PUBLIC_HF_TOKEN (optional client-side)
+- PACKET_SERVER_URL (override base URL for Next API tests if packet server runs on a non-default host/port)
+- HF_TOKEN (server-side for /api/hf proxy); NEXT_PUBLIC_HF_TOKEN (optional client-side, for public models only)
 - NEXT_PUBLIC_HF_MIRROR=/api/hf (recommended to mirror model assets via local proxy)
+- LM_REPO (HF repo id for LM safetensors) or LM_GGUF (absolute GGUF path for text-only LM mode)
+- MIMI_REPO (HF repo id for Mimi/tokenizer) or MIMI_LOCAL (absolute local safetensors path)
+- Notes: Model readiness visible at http://localhost:8788/weights; encode/decode require real Mimi; LM step requires loaded weights
 
 Documentation
 - Architecture and runtime contracts: ARCHITECTURE.md
@@ -19,158 +23,47 @@ Documentation
 
 ---
 
-## Legacy README (Vite + LM Studio)
+## Additional docs
+- Architecture and runtime contracts: ARCHITECTURE.md
+- Execution plan and milestones: PLAN.md
+- CSM integration details: docs/CSM.md
 
-## Features
+## Repository layout highlights
+- original_csm/: Reference copy of the original CSM code for study and integration planning.
+- models/: Contains local model artifacts. The .gguf file here corresponds to the included CSM model (used for LM text-only experiments in this repo).
 
-- 🎤 **Real-time Speech Recognition** - Browser-based speech-to-text using Web Speech API
-- 🤖 **Local AI Processing** - Integrates with LM Studio for private, local AI responses
-- 🔊 **Text-to-Speech** - Natural voice synthesis for AI responses
-- 🎨 **Modern UI** - Beautiful, responsive interface with animations
-- 🔒 **Privacy-First** - All processing happens locally, no data sent to external servers
-- ⚡ **Real-time Audio** - LiveKit integration for professional audio handling
+## Acknowledgments
+- Sesame AI Labs for CSM (Conversational Speech Model).
+- Kyutai for Moshi (speech–text) and Mimi (streaming codec).
+- Hugging Face for model hosting and Transformers ecosystem.
 
-## Prerequisites
+Note: Any legacy content referencing LM Studio has been archived and is not part of this Next.js packetized implementation.
 
-1. **LM Studio** - Download and install from [lmstudio.ai](https://lmstudio.ai/)
-2. **Node.js 18+** - For running the React application
-3. **Modern Browser** - Chrome, Firefox, Safari, or Edge with Web Speech API support
+## Profiling
+A lightweight LM profiling endpoint is available on the packet server to help measure per‑step generation latency.
 
-## Setup Instructions
+- Endpoint: GET http://localhost:8788/profile/lm
+- Query params:
+  - steps: number of timed steps (default 16; min 1; max 1000)
+  - warmup: number of warmup steps before timing (default 2; min 0; max 100)
+  - timer or debug: set to 1 (default) to include perStepMs array; 0 to omit
 
-### 1. Install Dependencies
-
-```bash
-npm install
+Example:
 ```
-
-### 2. Configure LM Studio
-
-1. Download and open LM Studio
-2. Download a model (recommended: Llama 3.2 3B or similar small model for fast responses)
-3. Load the model and start the local server
-4. Default LM Studio runs on `http://localhost:1234`
-
-### 3. Environment Configuration
-
-Create a `.env` file in the root directory:
-
-```env
-VITE_LIVEKIT_URL=ws://localhost:7880
-VITE_LIVEKIT_API_KEY=your_api_key
-VITE_LIVEKIT_API_SECRET=your_api_secret
-VITE_LM_STUDIO_URL=http://localhost:1234/v1
+curl "http://localhost:8788/profile/lm?steps=32&warmup=4&timer=1"
 ```
-
-**Note**: LiveKit configuration is optional for basic functionality. The app will work with just LM Studio for speech-to-speech conversation.
-
-### 4. Run the Application
-
-```bash
-npm run dev
+Response:
 ```
-
-The application will be available at `http://localhost:5173`
-
-## Usage
-
-1. **Start LM Studio** with a loaded model
-2. **Open the application** in your browser
-3. **Allow microphone permissions** when prompted
-4. **Click the microphone button** to start recording
-5. **Speak naturally** - the app will transcribe your speech
-6. **Listen to AI response** - the AI will respond with synthesized speech
-
-## Architecture
-
-### Core Services
-
-- **AudioService** - Handles audio capture, playback, and LiveKit integration
-- **SpeechService** - Manages speech recognition and text-to-speech synthesis
-- **LMStudioService** - Interfaces with local LM Studio API for AI processing
-
-### Technology Stack
-
-- **React 18** with TypeScript
-- **Vite** for fast development and building
-- **Tailwind CSS** for styling
-- **Framer Motion** for animations
-- **LiveKit** for real-time audio (optional)
-- **Axios** for HTTP requests
-- **Lucide React** for icons
-
-## Browser Compatibility
-
-- ✅ Chrome 25+
-- ✅ Firefox 44+
-- ✅ Safari 14.1+
-- ✅ Edge 79+
-
-**Note**: Speech recognition requires HTTPS in production or localhost for development.
-
-## Troubleshooting
-
-### LM Studio Connection Issues
-
-1. Ensure LM Studio is running with a model loaded
-2. Check that the server is accessible at `http://localhost:1234`
-3. Verify the model is responding in LM Studio's chat interface
-
-### Microphone Issues
-
-1. Check browser permissions for microphone access
-2. Ensure you're using HTTPS or localhost
-3. Try refreshing the page and allowing permissions again
-
-### Audio Issues
-
-1. Check system audio settings
-2. Ensure speakers/headphones are connected
-3. Try different browsers if issues persist
-
-## Development
-
-### Project Structure
-
+{
+  "ok": true,
+  "steps": 32,
+  "warmup": 4,
+  "totalMs": 420,
+  "avgMs": 13.1,
+  "perStepMs": [12, 13, ...],
+  "tokens": [123, 456, ...]
+}
 ```
-src/
-├── components/          # React components
-│   └── VoiceInterface.tsx
-├── services/           # Core service classes
-│   ├── audioService.ts
-│   ├── lmStudioService.ts
-│   └── speechService.ts
-├── types/              # TypeScript type definitions
-│   └── index.ts
-└── App.tsx             # Main application component
-```
-
-### Building for Production
-
-```bash
-npm run build
-```
-
-The built files will be in the `dist/` directory.
-
-## License
-
-MIT License - feel free to use this project as a starting point for your own applications.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## Future Enhancements
-
-- [ ] Voice activity detection
-- [ ] Multiple voice options
-- [ ] Conversation history persistence
-- [ ] Custom system prompts
-- [ ] Integration with more LLM providers
-- [ ] Mobile app version
-- [ ] Multi-language support
+Notes:
+- Returns 503 if the LM is not ready (weights not loaded).
+- In text‑only GGUF mode (audio_codebooks=0) the endpoint still works, feeding only the text channel.

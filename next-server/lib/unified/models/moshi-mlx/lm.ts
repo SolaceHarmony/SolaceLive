@@ -49,7 +49,9 @@ export class ScaledEmbedding {
     if (!this.weight) {
       throw new Error('Embedding not initialized');
     }
-    return mx.gather(this.weight, x, 0);
+    // Ensure indices are integral (int32) for gather
+    const idx = (mx as any).astype ? (mx as any).astype(x, 'int32') : x;
+    return mx.gather(this.weight, idx, 0);
   }
 }
 
