@@ -9,12 +9,14 @@ import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
+import { Buffer } from 'buffer';
+import { TextEncoder } from 'util';
 
 // MLX + Moshi/Mimi (TypeScript)
 import mlx from '@frost-beta/mlx';
 import { Mimi, createMimiConfig } from '../models/moshi-mlx/mimi';
 import { LmModel, createLmConfigFromDict } from '../models/moshi-mlx/lm';
-import { validateFromConfig, loadLmWeightsSubset, loadAllLmWeights, resolveMimiWeights } from '../models/moshi-mlx/weights/loader';
+import { validateFromConfig, loadAllLmWeights, resolveMimiWeights } from '../models/moshi-mlx/weights/loader';
 import { loadLmFromGGUF, createTextOnlyLmConfigFromGGUF } from '../models/gguf/gguf';
 
 // ===== Packet Protocol (same layout as client) =====
@@ -70,6 +72,8 @@ class PacketCodec {
 
 // ===== MLX-backed engine =====
 const SAMPLE_RATE = 24000;
+const FRAME_RATE = 12.5;
+const FRAME_SIZE = Math.round(SAMPLE_RATE / FRAME_RATE);
 
 type ClientState = {
   id: string;
@@ -109,6 +113,7 @@ class PacketWebSocketServer {
     lastEncodeMs: 0,
     lastStepMs: 0,
     lastDecodeMs: 0,
+    underrunCount: 0,
   };
   private readonly STEP_BUDGET_MS = 80;
 
@@ -221,7 +226,7 @@ class PacketWebSocketServer {
   }
 
   private setupWS() {
-    this.wss.on('connection', (ws, req) => {
+    this.wss.on('connection', (ws) => {
       const id = 'client_' + Math.random().toString(36).slice(2, 9);
       console.log(`[PacketServer] Client ${id} connected`);
 
@@ -277,7 +282,11 @@ class PacketWebSocketServer {
     switch (pkt.type) {
       case PacketType.AUDIO_CHUNK: {
         // Incoming Float32Array samples
-        const f32 = new Float32Array(pkt.data.buffer, pkt.data.byteOffset, Math.floor(pkt.data.byteLength / 4));
+        const sampleCount = Math.floor(pkt.data.byteLength / 4);
+        if (sampleCount % FRAME_SIZE !== 0) {
+          console.warn(`[PacketServer] AUDIO_CHUNK not aligned to 80ms: ${sampleCount} samples (frame=${FRAME_SIZE})`);
+        }
+        const f32 = new Float32Array(pkt.data.buffer, pkt.data.byteOffset, sampleCount);
         // Encode to Mimi tokens (if weights loaded)
         try {
           const t0 = Date.now();
@@ -324,19 +333,6 @@ class PacketWebSocketServer {
     for (let s = 0; s < newSteps; s++) {
       try {
         const tStep0 = Date.now();
-        if (this.usingLlama && this.llama) {
-          const lastTok = state.textTokens.length ? state.textTokens[state.textTokens.length - 1] : state.padTextId;
-          const logits = this.llama.forwardTokenIds([lastTok], state.textTokens.length, state.lmCache as unknown as Map<number, Map<string, any>>);
-          const last = logits.index([0, -1, null]);
-          const nextId = (mx.argmax(last, -1).tolist() as number[])[0] as number;
-          state.textTokens.push(nextId);
-          const stepMs = Date.now() - tStep0;
-          this.metrics.stepCount++;
-          this.metrics.stepTotalMs += stepMs;
-          this.metrics.lastStepMs = stepMs;
-          if (stepMs > this.STEP_BUDGET_MS) this.metrics.overBudgetCount++;
-          this.sendTextPartial(ws, String(nextId));
-        } else {
           const textToken = mx.array([[state.padTextId]]);
           const audioStep: any[] = [];
           for (let cb = 0; cb < this.audioCodebooks; cb++) {
@@ -365,8 +361,9 @@ class PacketWebSocketServer {
             this.metrics.decodeTotalMs += decMs;
             this.metrics.lastDecodeMs = decMs;
             if (audioFrame && audioFrame.length) this.sendAudio(ws, audioFrame);
-          } catch {}
-        }
+          } catch (err) {
+            console.warn('[PacketServer] Mimi.decode unavailable:', (err as Error).message);
+          }
       } catch (e) {
         console.error('[PacketServer] stepGenerate error:', e);
         break;
@@ -379,6 +376,20 @@ class PacketWebSocketServer {
 
   private getMetrics() {
     const avg = (sum: number, n: number) => (n > 0 ? sum / n : 0);
+    // Compute backlog (available steps) across all clients
+    const backlogs: number[] = [];
+    this.clients.forEach(({ state }) => {
+      try {
+        const v = this.computeNewSteps(state);
+        if (typeof v === 'number' && isFinite(v)) backlogs.push(v);
+      } catch {
+        // ignore per-client backlog compute errors
+      }
+    });
+    const backlogAvg = backlogs.length ? backlogs.reduce((a, b) => a + b, 0) / backlogs.length : 0;
+    const backlogMin = backlogs.length ? Math.min(...backlogs) : 0;
+    const backlogMax = backlogs.length ? Math.max(...backlogs) : 0;
+
     return {
       __lm: (this.lm?.isReady?.() ?? false),
       __mimi: (this.mimi?.isReady?.() ?? false),
@@ -393,11 +404,18 @@ class PacketWebSocketServer {
         lastMs: this.metrics.lastStepMs,
         overBudget: this.metrics.overBudgetCount,
         budgetMs: this.STEP_BUDGET_MS,
+        underruns: this.metrics.underrunCount,
       },
       decode: {
         count: this.metrics.decodeCount,
         avgMs: avg(this.metrics.decodeTotalMs, this.metrics.decodeCount),
         lastMs: this.metrics.lastDecodeMs,
+      },
+      queue: {
+        clients: backlogs.length,
+        backlogStepsAvg: backlogAvg,
+        backlogStepsMin: backlogMin,
+        backlogStepsMax: backlogMax,
       }
     };
   }
