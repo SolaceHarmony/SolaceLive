@@ -48,7 +48,7 @@
 - [x] HF proxy + mirror support; smoke tests and test endpoints
 - [x] Browser WhisperX demo + partials toggle in packet UI
 - [ ] Safetensors weight loaders for Moshi/Mimi; wire `loadWeights()`
-- [x] Apply `delays` in `LmModel.step()` and validate alignment
+- [ ] Apply `delays` in `LmModel.step()` and validate alignment
 - [x] Add metrics (step latency, queue depth, underruns) to `/health`
 - [ ] E2E validation against success metrics (< 200 ms, underruns < 1%)
 - [ ] Deployment docs + simple configuration guide
@@ -129,6 +129,21 @@ Notes:
 - HF proxy reachable and used for browser model prefetch; WhisperX runs in‑browser.
 - Architecture and plan remain coherent with code (filepaths + contracts verified by smoke tests).
 
+**Verification Checklist (code-backed)**
+- [x] /health endpoint exists and reports readiness + metrics (file: next-server/lib/unified/server/server.ts)
+- [x] /weights endpoint exists and reports LM/Mimi readiness (file: next-server/lib/unified/server/server.ts)
+- [x] LmModel.step() implements delays pipeline entry point (file: next-server/lib/unified/models/moshi-mlx/lm.ts)
+- [x] isReady()/debugInfo() present on LM; server uses them in /health and /weights
+- [ ] Mimi.loadWeights() wired and Mimi.isReady() reflects state (requires real weights)
+- [ ] Safetensors/loader path validated via models/moshi-mlx/weights/loader resolvers (set LM_REPO/MIMI_REPO)
+- [ ] Smoke script asserts: /health ok, /weights ok, and non-zero step counts after a basic generate/profile run
+- [ ] UI status panel surfaces step rate, queue depth, last decode ms
+
+Quick manual checks
+- curl http://localhost:8788/health → readiness booleans and metrics with budgetMs:80 present
+- curl http://localhost:8788/weights → lm.ready/mimi.ready and debug info objects
+- curl http://localhost:8788/profile/lm?steps=8&warmup=1 → returns avgMs and tokens when LM weights are loaded
+- npm -C next-server run smoke → in addition to health/proxy/weights via Next, logs LM profile results when LM is ready
 
 ## Getting Started Workboard (Day 0–1)
 

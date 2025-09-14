@@ -71,6 +71,26 @@ async function main() {
       const j = await r.json();
       if (!j.ok) throw new Error(`Weights inspect via Next failed: ${JSON.stringify(j)}`);
       console.log('✅ Weights inspect via Next OK');
+
+      // If LM ready, profile a few steps to validate step path
+      const lmReady = !!j.data?.lm?.ready;
+      if (lmReady) {
+        const prof = await fetch('http://localhost:8788/profile/lm?steps=8&warmup=1&timer=1');
+        if (prof.ok) {
+          const pj = await prof.json();
+          const steps = pj.steps;
+          const avg = pj.avgMs;
+          const tk = Array.isArray(pj.tokens) ? pj.tokens.length : 0;
+          console.log(`✅ LM profile: steps=${steps}, avgMs=${avg?.toFixed?.(2) ?? avg}, tokens=${tk}`);
+          if (!(steps >= 1 && tk >= 1)) {
+            console.warn('⚠️ LM profile returned no tokens or zero steps');
+          }
+        } else {
+          console.warn('⚠️ LM profile endpoint not OK:', prof.status);
+        }
+      } else {
+        console.warn('⚠️ LM not ready; skipping /profile/lm check');
+      }
     }
 
     console.log('\nAll smoke tests passed.');

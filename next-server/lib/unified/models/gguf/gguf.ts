@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import path from 'path';
+import { Buffer } from 'buffer';
 import mlx from '@frost-beta/mlx';
 const { core: mx } = mlx;
 
@@ -262,7 +262,7 @@ type LoadOpts = {
   outDType?: 'f32' | 'f16';
 };
 
-export async function loadLmFromGGUF(filePath: string, opts?: LoadOpts): Promise<{ weights: Map<string, mx.array>; meta: { n_layer: number; n_head: number; d_model: number; n_vocab: number } }> {
+export async function loadLmFromGGUF(filePath: string, opts?: LoadOpts): Promise<{ weights: Map<string, mx.array>; meta: { n_layer: number; n_head: number; d_model: number; n_vocab: number; n_kv_head?: number; context_length?: number; ff_length?: number; rope_base?: number; rope_scaling?: { type: 'linear' | 'yarn' | 'dynamic'; factor?: number } | null } }> {
   const { kv, tensors, dataOffset } = await readGGUF(filePath);
   // Extract hparams
   const n_layer = Number((kv['llama.block_count'] ?? kv['gemma3.block_count'] ?? kv['block_count'] ?? kv['n_layer'] ?? 0) as any);
@@ -270,6 +270,15 @@ export async function loadLmFromGGUF(filePath: string, opts?: LoadOpts): Promise
   const d_model = Number((kv['llama.embedding_length'] ?? kv['gemma3.embedding_length'] ?? kv['n_embd'] ?? 0) as any);
   let n_vocab = Number((kv['llama.vocab_size'] ?? kv['gemma3.vocab_size'] ?? kv['vocab_size'] ?? 0) as any);
   if (!n_layer || !n_head || !d_model) throw new Error('GGUF: missing core hparams');
+  // Optional meta for extended config mapping
+  const n_kv_head0 = Number((kv['llama.attention.head_count_kv'] ?? kv['gemma3.attention.head_count_kv'] ?? (kv as any)['head_count_kv'] ?? 0) as any);
+  const n_kv_head = n_kv_head0 > 0 ? n_kv_head0 : undefined;
+  const context_length0 = Number((kv['llama.context_length'] ?? kv['gemma3.context_length'] ?? (kv as any)['context_length'] ?? 0) as any);
+  const context_length = context_length0 > 0 ? context_length0 : undefined;
+  const ff_length0 = Number((kv['llama.feed_forward_length'] ?? kv['gemma3.feed_forward_length'] ?? (kv as any)['feed_forward_length'] ?? 0) as any);
+  const ff_length = ff_length0 > 0 ? ff_length0 : undefined;
+  const rope_base0 = Number((kv['llama.rope.freq_base'] ?? (kv as any)['gemma3.rope.freq_base'] ?? (kv as any)['rope.freq_base'] ?? (kv as any)['rope_freq_base'] ?? 0) as any);
+  const rope_base = rope_base0 > 0 ? rope_base0 : undefined;
 
   const find = (name: string): TensorInfo | undefined => tensors.find(t => t.name === name);
   const findAny = (names: string[]): TensorInfo | undefined => names.map(find).find(Boolean);
@@ -308,7 +317,7 @@ export async function loadLmFromGGUF(filePath: string, opts?: LoadOpts): Promise
             } else if (typeof (mx as any).astype === 'function') {
               arr = (mx as any).astype(arr, 'float16');
             }
-          } catch {}
+          } catch (_e) { /* ignore astype failures */ }
         }
         return arr;
       } finally {
@@ -714,22 +723,34 @@ export async function loadLmFromGGUF(filePath: string, opts?: LoadOpts): Promise
     if (ffn_norm && include(`transformer.${i}.norm2.weight`)) { opts?.progress?.(`transformer.${i}.norm2.weight`); out.set(`transformer.${i}.norm2.weight`, await toMx(ffn_norm)); }
   }
 
-  return { weights: out, meta: { n_layer: limit, n_head, d_model, n_vocab } };
+  return { weights: out, meta: { n_layer: limit, n_head, d_model, n_vocab, n_kv_head, context_length, ff_length, rope_base, rope_scaling: null } };
 }
 
-export function createTextOnlyLmConfigFromGGUF(meta: { n_layer: number; n_head: number; d_model: number; n_vocab: number }) {
+export function createTextOnlyLmConfigFromGGUF(meta: {
+  n_layer: number; n_head: number; d_model: number; n_vocab: number;
+  n_kv_head?: number;
+  context_length?: number;
+  ff_length?: number;
+  rope_base?: number;
+  rope_scaling?: { type: 'linear' | 'yarn' | 'dynamic'; factor?: number } | null;
+}) {
+  const kvRepeat = meta.n_kv_head && meta.n_kv_head > 0 ? Math.max(1, Math.floor(meta.n_head / meta.n_kv_head)) : 1;
+  const context = meta.context_length ?? 2048;
+  const dimFF = meta.ff_length ?? 4 * meta.d_model;
+  const maxPeriod = meta.rope_base ?? 10000;
+
   const transformer = {
     d_model: meta.d_model,
     num_heads: meta.n_head,
     num_layers: meta.n_layer,
-    dim_feedforward: 4 * meta.d_model,
+    dim_feedforward: dimFF,
     causal: true,
     norm_first: true,
     bias_ff: false,
     bias_attn: false,
     layer_scale: null,
-    context: 2048,
-    max_period: 10000,
+    context,
+    max_period: maxPeriod,
     use_conv_block: false,
     use_conv_bias: true,
     cross_attention: false,
@@ -738,8 +759,9 @@ export function createTextOnlyLmConfigFromGGUF(meta: { n_layer: number; n_head: 
     positional_embedding: 'rope',
     conv_layout: false,
     conv_kernel_size: 3,
-    kv_repeat: 1,
-    max_seq_len: 4096,
+    kv_repeat: kvRepeat,
+    max_seq_len: Math.max(4096, context),
+    // NOTE: rope_scaling meta is parsed but not yet consumed by the TS transformer implementation.
   } as const;
 
   return {

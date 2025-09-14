@@ -1,4 +1,5 @@
 import mlx from '@frost-beta/mlx';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const { core: mx } = mlx;
 
 export interface MimiConfig {
@@ -50,6 +51,8 @@ export class Mimi {
       vocab_size: this.vocab_size,
       streaming: this.streamingMode,
       batchSize: this.batchSize,
+      execMaskActiveCount: Array.isArray(this.execMask) ? this.execMask.filter(Boolean).length : 0,
+      encodeRemainderSamples: this.encodeRemainder?.length ?? 0,
     };
   }
 

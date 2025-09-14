@@ -19,6 +19,7 @@ import { Mimi, createMimiConfig } from '../models/moshi-mlx/mimi';
 import { LmModel, createLmConfigFromDict } from '../models/moshi-mlx/lm';
 import { validateFromConfig, loadAllLmWeights, resolveMimiWeights } from '../models/moshi-mlx/weights/loader';
 import { loadLmFromGGUF, createTextOnlyLmConfigFromGGUF } from '../models/gguf/gguf';
+import { sampleNextToken } from '../models/sampling';
 
 // ===== Packet Protocol (same layout as client) =====
 enum PacketType {
@@ -89,7 +90,7 @@ type ClientState = {
   lmCache: Map<string, any>;
 };
 
-class PacketWebSocketServer {
+export class PacketWebSocketServer {
   private port: number;
   private app = express();
   private server = createServer(this.app);
@@ -141,6 +142,7 @@ class PacketWebSocketServer {
       const mimiInfo = typeof mimiAny?.debugInfo === 'function' ? mimiAny.debugInfo() : { ready: this.mimi?.isReady?.() ?? false };
       res.json({ lm: info, mimi: mimiInfo });
     });
+
 
     // LM profiling endpoint: measures per-step latency for text generation
     this.app.get('/profile/lm', async (req, res) => {
@@ -215,6 +217,15 @@ class PacketWebSocketServer {
         if (ggufPath) {
           console.log('[PacketServer] Using GGUF LM at', ggufPath);
           const { weights, meta } = await loadLmFromGGUF(ggufPath);
+          console.log('[PacketServer] GGUF meta:', {
+            n_layer: (meta as any).n_layer,
+            n_head: (meta as any).n_head,
+            n_kv_head: (meta as any).n_kv_head,
+            d_model: (meta as any).d_model,
+            n_vocab: (meta as any).n_vocab,
+            rope_base: (meta as any).rope_base,
+            context_length: (meta as any).context_length,
+          });
           lmCfg = createTextOnlyLmConfigFromGGUF(meta);
           this.lm = new LmModel(lmCfg);
           this.textVocab = lmCfg.text_in_vocab_size;
@@ -577,6 +588,201 @@ class PacketWebSocketServer {
     this.server.listen(this.port, () => {
       console.log(`[PacketServer] MLX Packet Server running on :${this.port}`);
     });
+  }
+}
+
+// ===== Next.js-first Transformer interfaces & helpers =====
+export type AttentionConfig = {
+  type?: 'sdpa' | 'mha' | 'gqa' | 'mqa';
+  kvCache?: boolean;
+  ropeScaling?: { type: 'linear' | 'yarn' | 'dynamic'; factor?: number } | null;
+  slidingWindow?: number | null;
+};
+
+export type GenerationConfig = {
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  repetition_penalty?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  stream?: boolean;
+  stop_tokens?: number[];
+};
+
+export interface TransformerEngine {
+  isReady(): boolean;
+  vocabSize(): number;
+  step(textId: number, audioIds?: number[]): Promise<{ nextText: number; nextAudio?: number[] }>;
+  generateText(
+    startId: number,
+    cfg?: GenerationConfig
+  ): AsyncGenerator<{ token: number }, void, unknown>;
+}
+
+export class MlxTransformerEngine implements TransformerEngine {
+  private cache = new Map<string, any>();
+  private mx = mlx.core;
+  constructor(
+    private lm: LmModel,
+    private audioCodebooks: number,
+    private padTextId: number
+  ) {
+    this.cache.set('transformer', new Map<number, Map<string, any>>());
+  }
+  isReady(): boolean { return this.lm?.isReady?.() ?? false; }
+  vocabSize(): number {
+    // try text_out first, fallback to text_in
+    try { return (this as any).lm?.config?.text_out_vocab_size ?? 0; } catch { /* noop */ }
+    return 0;
+  }
+  async step(textId: number, audioIds: number[] = []): Promise<{ nextText: number; nextAudio?: number[] }> {
+    const mx = this.mx;
+    const text = mx.array([[textId | 0]], 'int32');
+    const audio: any[] = [];
+    for (let cb = 0; cb < this.audioCodebooks; cb++) {
+      const tok = audioIds[cb] ?? 0;
+      audio.push(mx.array([[tok | 0]], 'int32'));
+    }
+    const { next_text, next_audio } = this.lm.step(text, audio, this.cache);
+    const t = (next_text.tolist() as number[][])[0][0] | 0;
+    const a: number[] = [];
+    for (let cb = 0; cb < next_audio.length; cb++) {
+      a.push(((next_audio[cb].tolist() as number[][])[0][0]) | 0);
+    }
+    return { nextText: t, nextAudio: a.length ? a : undefined };
+  }
+  async *generateText(startId: number, cfg: GenerationConfig = {}): AsyncGenerator<{ token: number }, void, unknown> {
+    const max = Math.max(1, cfg.max_tokens ?? 32);
+    const history: number[] = [];
+    let cur = startId | 0;
+    history.push(cur);
+    for (let i = 0; i < max; i++) {
+      const mx = this.mx;
+      const text = mx.array([[cur | 0]], 'int32');
+      const audio: any[] = [];
+      for (let cb = 0; cb < this.audioCodebooks; cb++) {
+        audio.push(mx.array([[0]], 'int32'));
+      }
+      const { text_logits } = (this.lm as any).stepWithLogits(text, audio, this.cache);
+      const logits = (text_logits.tolist() as number[][])[0];
+      const nextId = sampleNextToken(logits, history, {
+        temperature: cfg.temperature,
+        top_p: cfg.top_p,
+        top_k: cfg.top_k,
+        repetition_penalty: cfg.repetition_penalty,
+        frequency_penalty: cfg.frequency_penalty,
+        presence_penalty: cfg.presence_penalty,
+        stop_tokens: cfg.stop_tokens,
+      });
+      cur = nextId | 0;
+      history.push(cur);
+      yield { token: cur };
+      if (cfg.stop_tokens && cfg.stop_tokens.includes(cur)) break;
+    }
+  }
+}
+
+/**
+ * Create a ready-to-use MLX transformer engine by reading env vars similarly to PacketWebSocketServer.
+ * This focuses on text LM; audio is passed-through but not required.
+ */
+export async function createMlxEngineFromEnv(): Promise<MlxTransformerEngine> {
+  // Load base config
+  const cfgPath = path.join(process.cwd(), 'lib/unified/configs/moshi_mlx_2b.json');
+  const raw = fs.readFileSync(cfgPath, 'utf-8');
+  const cfgDict = JSON.parse(raw);
+  let lmCfg = createLmConfigFromDict(cfgDict);
+  let audioCodebooks = lmCfg.audio_codebooks;
+  const padTextId = (cfgDict.existing_text_padding_id ?? 0) as number;
+  let lm = new LmModel(lmCfg);
+
+  const lmRepo = process.env.LM_REPO;
+  const mimiRepo = process.env.MIMI_REPO; // not required here
+  try {
+    const ggufPath = process.env.LM_GGUF;
+    if (ggufPath) {
+      const { weights, meta } = await loadLmFromGGUF(ggufPath);
+      lmCfg = createTextOnlyLmConfigFromGGUF(meta);
+      lm = new LmModel(lmCfg);
+      audioCodebooks = 0;
+      await lm.loadWeights(weights);
+    } else if (lmRepo) {
+      if (mimiRepo) {
+        await validateFromConfig(lmRepo, mimiRepo, cfgPath).catch(() => {});
+      }
+      const all = await loadAllLmWeights(lmRepo);
+      await lm.loadWeights(all);
+    } else {
+      // No weights configured; engine will not be ready
+    }
+  } catch {
+    // run degraded: engine will report not ready
+  }
+  return new MlxTransformerEngine(lm, audioCodebooks, padTextId);
+}
+
+/**
+ * Next.js API handler factory for simple text token generation.
+ * POST body: { startId?: number; steps?: number; stream?: boolean }
+ * If stream=true, responds with text/event-stream streaming tokens.
+ */
+export function createNextTextGenerateHandler(engine: TransformerEngine) {
+  return async function handler(req: any, res: any) {
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', ['POST']);
+      return res.status(405).json({ error: 'Method Not Allowed' });
+    }
+    if (!engine.isReady()) {
+      return res.status(503).json({ ok: false, error: 'Engine not ready' });
+    }
+    const body = (req.body ?? {}) as {
+      startId?: number; steps?: number; stream?: boolean;
+      temperature?: number; top_p?: number; top_k?: number;
+      repetition_penalty?: number; frequency_penalty?: number; presence_penalty?: number;
+      stop_tokens?: number[];
+    };
+    const startId = (body.startId ?? 0) | 0;
+    const steps = Math.max(1, Math.min(2048, body.steps ?? 32));
+    const stream = !!body.stream;
+    const genCfg = {
+      max_tokens: steps,
+      stream,
+      temperature: body.temperature,
+      top_p: body.top_p,
+      top_k: body.top_k,
+      repetition_penalty: body.repetition_penalty,
+      frequency_penalty: body.frequency_penalty,
+      presence_penalty: body.presence_penalty,
+      stop_tokens: body.stop_tokens,
+    } as GenerationConfig;
+
+    if (stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders?.();
+      try {
+        let i = 0;
+        for await (const { token } of engine.generateText(startId, genCfg)) {
+          res.write(`data: ${JSON.stringify({ token, i })}\n\n`);
+          i++;
+        }
+        res.end();
+      } catch (err) {
+        res.write(`event: error\n`);
+        res.write(`data: ${JSON.stringify({ error: (err as Error).message })}\n\n`);
+        res.end();
+      }
+      return;
+    }
+
+    const out: number[] = [];
+    for await (const { token } of engine.generateText(startId, genCfg)) {
+      out.push(token);
+    }
+    return res.status(200).json({ ok: true, tokens: out, count: out.length });
   }
 }
 

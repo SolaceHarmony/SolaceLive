@@ -1,7 +1,7 @@
 import mlx from '@frost-beta/mlx';
 import { Transformer, TransformerConfig } from './transformer';
 
-const { core: mx, nn } = mlx;
+const { core: mx } = mlx;
 
 export interface DepFormerConfig {
   transformer: TransformerConfig;
@@ -330,13 +330,50 @@ export class LmModel {
    * Single-step generation with caches and acoustic delays.
    * Note: requires proper weights and cache plumbing.
    */
+  /**
+   * Apply acoustic delays per codebook to align audio tokens with text, based on config.audio_delays.
+   * TODO: Implement masking/shift when caches are in place; for now, returns tokens unchanged.
+   */
+  private applyAudioDelays(audio_tokens: mx.array[], cache?: Map<string, any>): mx.array[] {
+    // Minimal, cache-aware delay: for each codebook i with delay d>0, suppress early tokens
+    // by substituting a zero token until d steps have elapsed for that codebook.
+    // This preserves shapes [B,1] and begins aligning audio vs text without full sequence caches.
+    const delays = this.config.audio_delays || [];
+    if (!delays.length) return audio_tokens;
+
+    // Keep simple counters in cache under 'audio_delay_steps'
+    let delayState = cache?.get('audio_delay_steps') as Map<number, number> | undefined;
+    if (!delayState) {
+      delayState = new Map<number, number>();
+      if (cache) cache.set('audio_delay_steps', delayState);
+    }
+
+    const out: mx.array[] = [];
+    for (let i = 0; i < audio_tokens.length; i++) {
+      const tok = audio_tokens[i]; // [B,1]
+      const d = delays[i] ?? 0;
+      const seen = delayState.get(i) ?? 0;
+      // Increment seen count each step
+      delayState.set(i, seen + 1);
+      if (d > 0 && seen < d) {
+        // Substitute zero token id during delay period
+        const zeroTok = mx.array([[0]], 'int32');
+        out.push(zeroTok);
+      } else {
+        out.push(tok);
+      }
+    }
+    return out;
+  }
+
   step(
     text_token: mx.array,      // [B, 1]
     audio_tokens: mx.array[],  // [B, 1] per codebook
     cache?: Map<string, any>
   ): { next_text: mx.array; next_audio: mx.array[] } {
     if (!this.weightsLoaded) throw new Error('LmModel.step: weights not loaded');
-    const { text_logits, audio_logits } = this.forward(text_token, audio_tokens, cache);
+    const delayedAudio = this.applyAudioDelays(audio_tokens, cache);
+    const { text_logits, audio_logits } = this.forward(text_token, delayedAudio, cache);
     const last_text_logits = text_logits.index([null, -1, null]);
     const next_text = mx.argmax(mx.softmax(last_text_logits, -1), -1);
     const next_audio: mx.array[] = [];
@@ -345,6 +382,25 @@ export class LmModel {
       next_audio.push(mx.argmax(mx.softmax(last_audio, -1), -1));
     }
     return { next_text, next_audio };
+  }
+
+  /**
+   * Returns last-step logits without sampling so callers can apply Transformers-like sampling.
+   */
+  stepWithLogits(
+    text_token: mx.array,      // [B, 1]
+    audio_tokens: mx.array[],  // [B, 1]
+    cache?: Map<string, any>
+  ): { text_logits: mx.array; audio_logits: mx.array[] } {
+    if (!this.weightsLoaded) throw new Error('LmModel.stepWithLogits: weights not loaded');
+    const { text_logits, audio_logits } = this.forward(text_token, audio_tokens, cache);
+    // Return only the last position logits (B, vocab) for text and audio heads
+    const last_text_logits = text_logits.index([null, -1, null]);
+    const last_audio_logits: mx.array[] = [];
+    for (let i = 0; i < audio_logits.length; i++) {
+      last_audio_logits.push(audio_logits[i].index([null, -1, null]));
+    }
+    return { text_logits: last_text_logits, audio_logits: last_audio_logits };
   }
 }
 
