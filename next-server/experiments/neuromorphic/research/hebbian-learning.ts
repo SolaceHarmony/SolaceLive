@@ -262,7 +262,6 @@ export class CompetitiveHebbian {
     return progression[Math.max(idx - 1, 0)];
   }
   
-  getStatistics(): any {
   getStatistics(): CompetitiveHebbianStatistics {
     const stats: CompetitiveHebbianStatistics = {
       totalSynapses: this.synapses.size,

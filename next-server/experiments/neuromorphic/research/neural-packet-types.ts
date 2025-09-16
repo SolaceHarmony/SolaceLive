@@ -13,6 +13,14 @@
 // ============================================================================
 
 /**
+ * Packet types for neuromorphic experiments
+ */
+export enum PacketType {
+  PERCEPTION = 'PERCEPTION',
+  INFERENCE = 'INFERENCE',
+}
+
+/**
  * Differentiated Services Code Points mapped to cognitive priority levels
  */
 export enum DSCP {
@@ -28,6 +36,54 @@ export enum DSCP {
 /**
  * Quality of Service parameters with neural dynamics
  */
+
+/**
+ * Synaptic path metadata used by routing and attention
+ */
+export interface SynapticPath {
+  source: string;
+  destination: string;
+  intermediates: string[];
+  weight?: number;
+  delay?: number;
+  reliability?: number;
+}
+
+/**
+ * Cognitive areas (simplified)
+ */
+export enum CognitiveAS {
+  THALAMUS = 'THALAMUS',
+  ACC = 'ACC',
+  HIPPOCAMPUS = 'HIPPOCAMPUS',
+  PREFRONTAL = 'PREFRONTAL',
+}
+
+/**
+ * Minimal synaptic weight record for experiments
+ */
+export class SynapticWeight {
+  strength = 1.0;
+  lastUsed: bigint = BigInt(0);
+  totalUses = 0;
+  winStreak = 0;
+  lossStreak = 0;
+  qosClass: DSCP = DSCP.DEFAULT;
+  bandwidth = 1.0;
+  priority = 0;
+  averageLatency = 0;
+}
+
+/**
+ * Minimal multi-armed bandit arm stats
+ */
+export class ArmStats {
+  pulls = 0;
+  meanReward = 0;
+  variance = 0;
+  qosMultiplier = 1;
+  lastPull: bigint = BigInt(0);
+}
 export interface NeuralQoS {
   // Standard QoS parameters
   dscp: DSCP;                // Differentiated Services Code Point
@@ -107,6 +163,14 @@ export interface MemoryTrace {
 /**
  * A racing context for competitive thoughts
  */
+export interface RaceResult {
+  thought: NeuralPacket;
+  raceTime: number;
+  path: SynapticPath;
+  hops: number;
+  winner: boolean;
+}
+
 export class Race {
   id: string;
   startTime: number;
@@ -115,7 +179,7 @@ export class Race {
   
   constructor(id: string) {
     this.id = id;
-    this.startTime = performance.now();
+    this.startTime = (globalThis.performance?.now?.() ?? Date.now());
   }
 }
 

@@ -280,7 +280,7 @@ export class WhisperWasmService {
 
   setLanguage(language: string): void {
     if (this.whisper && this.getSupportedLanguages().includes(language)) {
-      this.whisper.setLanguage(language);
+      this.whisper.setLanguage?.(language);
       console.log(`Whisper language set to: ${language}`);
     } else {
       console.warn(`Unsupported language: ${language}`);

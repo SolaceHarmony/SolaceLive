@@ -90,7 +90,7 @@ export class MimiGammaSynchronizer {
     const spectralCentroid = this.calculateSpectralCentroid(segment);
     
     return {
-      id: crypto.randomUUID(),
+      id: (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)),
       type: PacketType.PERCEPTION,
       timestamp: BigInt(timestamp * 1000), // Convert to microseconds
       
@@ -106,12 +106,15 @@ export class MimiGammaSynchronizer {
       amplitude: energy * strength,
       phase: this.gammaPhase,
       qos: {
-        dscp: energy > 0.5 ? DSCP.EF : DSCP.AF31,
+        dscp: energy > 0.5 ? DSCP.CONSCIOUS_THOUGHT : DSCP.WORKING_MEMORY,
         latency: this.GAMMA_PERIOD_MS,
         bandwidth: segment.length * 4,
         jitter: 5,
+        loss: 0,
+        spikeRate: this.config.gammaFrequency,
         burstiness: strength,
-        reliability: 0.99
+        coherence: 0.0,
+        plasticityRate: 0.1
       },
       payload: {
         audioSegment: Array.from(segment),

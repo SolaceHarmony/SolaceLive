@@ -44,5 +44,5 @@ export default [
       '@typescript-eslint/ban-ts-comment': 'off',
     },
   },
-  { ignores: ['.next/*', 'node_modules/'] },
+  { ignores: ['.next/**', 'node_modules/**', 'experiments/**', 'examples/**', 'dist/**'] },
 ]

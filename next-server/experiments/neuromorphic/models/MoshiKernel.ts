@@ -1,9 +1,9 @@
 // src/lib/moshi-neuromorphic/MoshiKernel.ts
 
-import { NeuralPacket, PacketType, MoshiToken } from '../neuromorphic-research/neural-packet-types';
-import { ThoughtRacer } from '../neuromorphic-research/thought-racer';
-import { GammaOscillator } from '../neuromorphic-research/gamma-oscillator';
-import { AttentionMechanism } from '../neuromorphic-research/attention-mechanism';
+import { NeuralPacket, PacketType, MoshiToken } from '../research/neural-packet-types';
+import { ThoughtRacer } from '../research/thought-racer';
+import { GammaOscillator } from '../research/gamma-oscillator';
+import { AttentionMechanism } from '../research/attention-mechanism';
 import { MimiGammaSynchronizer } from './MimiGammaSynchronizer';
 import { ConsciousnessOrchestrator } from './ConsciousnessOrchestrator';
 
@@ -19,7 +19,7 @@ export class MoshiKernel {
    */
   private tokenToPacket(token: MoshiToken, streamId: string): NeuralPacket {
     return {
-      id: crypto.randomUUID(),
+      id: (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)),
       type: PacketType.INFERENCE,
       timestamp: BigInt(Date.now() * 1000),
       sourceAS: { id: 'moshi-kernel', type: 'inference' },

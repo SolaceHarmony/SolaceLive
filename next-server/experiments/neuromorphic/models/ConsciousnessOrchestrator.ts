@@ -194,7 +194,7 @@ export class ConsciousnessOrchestrator {
    */
   private updateConsciousnessState(winner: NeuralPacket, pathStrength: number): void {
     // Arousal increases with high-priority packets
-    if (winner.qos.dscp === DSCP.EF || winner.qos.dscp === DSCP.AF41) {
+    if (winner.qos.dscp === DSCP.CONSCIOUS_THOUGHT || winner.qos.dscp === DSCP.ATTENTION_FOCUS) {
       this.state.arousal = Math.min(1, this.state.arousal + 0.1);
     } else {
       this.state.arousal = Math.max(0, this.state.arousal - 0.05);
