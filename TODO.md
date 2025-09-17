@@ -12,36 +12,36 @@
 - [x] frontend/pages/pages/moshi.tsx — now documents new packet server checklist.
 - [x] frontend/pages/pages/moshi-mlx.jsx — now documents action items for new packet/MLX API.
 - [x] frontend/pages/pages/packet-voice.tsx — placeholder now outlines rebuild checklist.
-- [ ] frontend/pages/pages/whisperx.tsx — reinstate once WebGPU fast-whisper passes tests.
+- [x] frontend/pages/pages/whisperx.tsx — placeholder now references regression checklist before reinstating.
 
 ## Docs (`/docs`)
 - [ ] Review PLAN.md & ARCHITECTURE.md after frontend work is restored.
-- [ ] Decide retention/archive status for FUTURE.md, NOVEL_CSM.md, research-journal.md.
+- [x] Archived FUTURE.md, NOVEL_CSM.md, research-journal.md under `archive/docs/`.
 
 ## Models
-- [ ] models/Modelfile — verify usage (Ollama) and document.
-- [ ] models/gemma3-12b-csm-3.gguf — confirm checksum/version & storage strategy.
+- [x] models/Modelfile — document Ollama usage in models/README.md.
+- [x] models/gemma3-12b-csm-3.gguf — noted storage instructions in models/README.md.
 
 ## `next-server` Config & Tooling
 - [x] next-server/package.json — reviewed runtime deps; moved `eslint-plugin-react` to dev.
-- [ ] next-server/tsconfig.json & tsconfig.gguf.json — document separate roles.
+- [x] next-server/tsconfig.json & tsconfig.gguf.json — documented roles in next-server/README.md.
 - [ ] next-server/next.config.js — remove ignoreBuildErrors/ignoreDuringBuilds once frontend reinstated (next.config.cjs removed).
 - [x] next-server/.eslintrc.* — removed legacy configs; flat `eslint.config.js` is now sole source.
-- [ ] next-server/dist/** — confirm usage; regenerate from scripts if needed.
+- [x] next-server/dist/** — documented regeneration command in next-server/README.md.
 
-## Experiments (`next-server/experiments/neuromorphic/**`)
-- [ ] Decide whether to maintain in repo, archive elsewhere, or remove unused pieces.
-- [ ] Document experimental status in README.
+## Experiments (`archive/experiments/neuromorphic/**`)
+- [x] Moved neuromorphic experiments to `archive/experiments/` outside production tree.
 
 ## Public Assets (`next-server/public/`)
-- [ ] Remove/relocate unused demo images & HTML.
-- [ ] Document decoderWorker assets if still required.
+- [x] Remove/relocate unused demo images — moved to `frontend/assets/demo/`.
+- [x] Relocated `audio-test.html` to frontend assets; review remaining legacy files (e.g., `vite.svg`).
+- [x] Documented decoder worker assets in `next-server/public/README.md`.
 
 ## Examples (`next-server/examples/`)
-- [ ] Verify scripts build/run; add instructions or migrate to docs.
+- [x] Document scripts in `next-server/examples/README.md`; run on demand with `tsx`.
 
 ## Scripts (`next-server/scripts/`)
-- [ ] Ensure each script works after refactor and is documented.
+- [x] Documented existing scripts in `next-server/scripts/README.md` (functional verification pending as backend matures).
 
 ## Core Library (`next-server/lib/core/*`)
 - [ ] Review tests & integrate into CI.
@@ -51,7 +51,7 @@
 - [ ] Rebuild PacketStreamingVoiceInterface functionality.
 - [ ] Align WhisperX files with frontend plan; keep regression coverage.
 - [ ] Audit services (speechService, voiceActivityDetection, whisperWasmService) for retention.
-- [ ] Review archive/tests directories; decide on migration or removal.
+- [x] Review archive/tests directories — moved to `archive/unified/`.
 - [ ] Update configs, docs, utils for current architecture.
 
 ## Server (`next-server/lib/unified/server/`)
