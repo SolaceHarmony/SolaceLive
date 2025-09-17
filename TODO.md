@@ -8,11 +8,11 @@
 - [x] frontend/whisperx/README.md — regression checklist documented.
 - [x] frontend/mimi-packet/README.md — milestones broken into actionable tasks.
 - [x] frontend/pages/README.md — activation checklist documented.
-- [x] frontend/pages/pages/index.jsx — now surfaces backend status & reintegration checklist.
-- [x] frontend/pages/pages/moshi.tsx — now documents new packet server checklist.
-- [x] frontend/pages/pages/moshi-mlx.jsx — now documents action items for new packet/MLX API.
-- [x] frontend/pages/pages/packet-voice.tsx — placeholder now outlines rebuild checklist.
-- [x] frontend/pages/pages/whisperx.tsx — placeholder now references regression checklist before reinstating.
+- [x] frontend/pages/index.jsx — now surfaces backend status & reintegration checklist.
+- [x] frontend/pages/moshi.tsx — now documents new packet server checklist.
+- [x] frontend/pages/moshi-mlx.jsx — now documents action items for new packet/MLX API.
+- [x] frontend/pages/packet-voice.tsx — placeholder now outlines rebuild checklist.
+- [x] frontend/pages/whisperx.tsx — placeholder now references regression checklist before reinstating.
 
 ## Docs (`/docs`)
 - [ ] Review PLAN.md & ARCHITECTURE.md after frontend work is restored.
@@ -33,8 +33,8 @@
 - [x] Moved neuromorphic experiments to `archive/experiments/` outside production tree.
 
 ## Public Assets (`next-server/public/`)
-- [x] Remove/relocate unused demo images — moved to `frontend/assets/demo/`.
-- [x] Relocated `audio-test.html` to frontend assets; review remaining legacy files (e.g., `vite.svg`).
+- [x] Remove/relocate unused demo images — moved to `frontend/assets/`.
+- [x] Relocated `audio-test.html` to frontend assets; removed unused `vite.svg`.
 - [x] Documented decoder worker assets in `next-server/public/README.md`.
 
 ## Examples (`next-server/examples/`)
@@ -50,8 +50,8 @@
 ## Unified Library (`next-server/lib/unified/*`)
 - [ ] Rebuild PacketStreamingVoiceInterface functionality.
 - [ ] Align WhisperX files with frontend plan; keep regression coverage.
-- [ ] Audit services (speechService, voiceActivityDetection, whisperWasmService) for retention.
-- [x] Review archive/tests directories — moved to `archive/unified/`.
+- [x] Audit services (speechService, voiceActivityDetection, whisperWasmService) — moved to `archive/unified/services/`.
+- [x] Review archive/tests/app directories — moved to `archive/unified/`.
 - [ ] Update configs, docs, utils for current architecture.
 
 ## Server (`next-server/lib/unified/server/`)
@@ -61,7 +61,7 @@
 - [ ] Confirm all testing endpoints remain necessary & documented.
 
 ## Original CSM Snapshot
-- [ ] Decide retention location & document relationship to current adapter.
+- [x] Archived under `archive/original_csm` with README noting purpose.
 
 ## Editor/IDE Files
-- [ ] Audit .vscode/ and .idea/ configs; keep repo-specific instructions only.
+- [x] Removed legacy IDE configs (.vscode/, .idea/). Document editor setup separately if needed.
