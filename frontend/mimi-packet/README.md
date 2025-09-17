@@ -4,7 +4,7 @@ Client-facing pieces for the packetised Moshi/Mimi loop currently live at:
 
 - LM + Mimi bindings: `next-server/backend/models/moshi-mlx/**`
 - Packet protocol + queues: `next-server/backend/core/**/*`
-- Placeholder voice interface: `frontend/pages/packet-voice.tsx` (staged)
+- Placeholder voice interface: `frontend/pages/packet-voice.tsx` (staged) using components in `frontend/components/`
 
 ## Milestones
 

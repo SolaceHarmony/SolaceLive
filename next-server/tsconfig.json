@@ -35,9 +35,8 @@
   "exclude": [
     "node_modules",
     ".next",
-    "experiments/**/*",
     "../frontend/**",
-    "../archive/**"
+    "../archive/**",
     "test-*.ts",
     "tests/**/*"
   ]

@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { hfGet } from '../../../../hf-loader';
+import { hfGet } from '../../../../lib/hf-loader';
 import mlx from '@frost-beta/mlx';
 const { core: mx } = mlx;
 import type { LmConfig } from '../lm';
@@ -169,9 +169,9 @@ export async function validateFromConfig(lmRepo: string, mimiRepo: string, cfgPa
 }
 
 // ========== Low-level safetensors reading (subset) ==========
-type TensorInfo = { dtype: string; shape: number[]; data_offsets: [number, number] };
+export type TensorInfo = { dtype: string; shape: number[]; data_offsets: [number, number] };
 
-async function readSafetensors(filePath: string): Promise<{ header: Record<string, TensorInfo>; headerSize: number; buf: Buffer }>{
+export async function readSafetensors(filePath: string): Promise<{ header: Record<string, TensorInfo>; headerSize: number; buf: Buffer }>{
   const fd = await fs.open(filePath, 'r');
   try {
     const head = Buffer.alloc(8);

@@ -3,6 +3,8 @@
  * Tests the full dual-stream packet processing pipeline
  */
 
+import { describe, it } from 'mocha';
+import { expect } from 'chai';
 import {
   Packet,
   PacketType,
@@ -123,32 +125,32 @@ class TestPacketFactory {
 describe('Packet Encoder/Decoder', () => {
   const factory = new TestPacketFactory();
   
-  test('should encode and decode audio packets correctly', () => {
+  it('should encode and decode audio packets correctly', () => {
     const original = factory.createAudioPacket();
     const encoded = PacketEncoder.encode(original);
     const decoded = PacketDecoder.decode(encoded);
     
-    expect(decoded.header.type).toBe(PacketType.AUDIO_PCM);
-    expect(decoded.header.streamId).toBe(StreamID.USER);
-    expect(decoded.header.sequenceNumber).toBe(original.header.sequenceNumber);
+    expect(decoded.header.type).to.equal(PacketType.AUDIO_PCM);
+    expect(decoded.header.streamId).to.equal(StreamID.USER);
+    expect(decoded.header.sequenceNumber).to.equal(original.header.sequenceNumber);
     
     const audioPayload = decoded.payload as any;
-    expect(audioPayload.sampleRate).toBe(16000);
-    expect(audioPayload.channels).toBe(1);
-    expect(audioPayload.audioData.length).toBe(320); // 20ms at 16kHz
+    expect(audioPayload.sampleRate).to.equal(16000);
+    expect(audioPayload.channels).to.equal(1);
+    expect(audioPayload.audioData.length).to.equal(320); // 20ms at 16kHz
   });
   
-  test('should handle text packets with unicode', () => {
+  it('should handle text packets with unicode', () => {
     const text = "Hello 世界 🚀 CSM!";
     const packet = factory.createTextPacket(text);
     const encoded = PacketEncoder.encode(packet);
     const decoded = PacketDecoder.decode(encoded);
     
-    expect(decoded.payload.text).toBe(text);
-    expect(decoded.payload.isFinal).toBe(true);
+    expect(decoded.payload.text).to.equal(text);
+    expect(decoded.payload.isFinal).to.be.true;
   });
   
-  test('should fragment and reassemble large packets', () => {
+  it('should fragment and reassemble large packets', () => {
     // Create a large audio packet (1 second)
     const largeAudio = new Float32Array(16000);
     for (let i = 0; i < largeAudio.length; i++) {
@@ -163,33 +165,33 @@ describe('Packet Encoder/Decoder', () => {
     
     // Fragment into smaller packets
     const fragments = PacketUtils.fragmentPacket(packet, 1000);
-    expect(fragments.length).toBeGreaterThan(1);
+    expect(fragments.length).to.be.greaterThan(1);
     
     // Verify fragment flags
     fragments.forEach((frag, idx) => {
-      expect(frag.header.flags & PacketFlags.FRAGMENTED).toBeTruthy();
+      expect(frag.header.flags & PacketFlags.FRAGMENTED).to.not.equal(0);
       if (idx === fragments.length - 1) {
-        expect(frag.header.flags & PacketFlags.FINAL_FRAGMENT).toBeTruthy();
+        expect(frag.header.flags & PacketFlags.FINAL_FRAGMENT).to.not.equal(0);
       }
     });
     
     // Reassemble
     const reassembled = PacketUtils.reassemblePackets(fragments);
-    expect(reassembled.header.type).toBe(packet.header.type);
-    expect(reassembled.header.sequenceNumber).toBe(42);
+    expect(reassembled.header.type).to.equal(packet.header.type);
+    expect(reassembled.header.sequenceNumber).to.equal(42);
   });
   
-  test('should calculate correct checksums', () => {
+  it('should calculate correct checksums', () => {
     const packet = factory.createTextPacket("Test checksum");
     const checksum1 = PacketUtils.calculateChecksum(packet);
     const checksum2 = PacketUtils.calculateChecksum(packet);
     
-    expect(checksum1).toBe(checksum2);
+    expect(checksum1).to.equal(checksum2);
     
     // Modify packet and verify checksum changes
     packet.payload.text = "Modified text";
     const checksum3 = PacketUtils.calculateChecksum(packet);
-    expect(checksum3).not.toBe(checksum1);
+    expect(checksum3).to.not.equal(checksum1);
   });
 });
 
@@ -198,7 +200,7 @@ describe('Packet Encoder/Decoder', () => {
 // ============================================================================
 
 describe('Priority Queue', () => {
-  test('should dequeue packets in priority order', () => {
+  it('should dequeue packets in priority order', () => {
     const queue = new PriorityQueue<string>();
     
     queue.enqueue('low', PacketPriority.LOW);
@@ -206,22 +208,22 @@ describe('Priority Queue', () => {
     queue.enqueue('normal', PacketPriority.NORMAL);
     queue.enqueue('high', PacketPriority.HIGH);
     
-    expect(queue.dequeue()).toBe('critical');
-    expect(queue.dequeue()).toBe('high');
-    expect(queue.dequeue()).toBe('normal');
-    expect(queue.dequeue()).toBe('low');
+    expect(queue.dequeue()).to.equal('critical');
+    expect(queue.dequeue()).to.equal('high');
+    expect(queue.dequeue()).to.equal('normal');
+    expect(queue.dequeue()).to.equal('low');
   });
   
-  test('should maintain FIFO order within same priority', () => {
+  it('should maintain FIFO order within same priority', () => {
     const queue = new PriorityQueue<number>();
     
     queue.enqueue(1, PacketPriority.NORMAL);
     queue.enqueue(2, PacketPriority.NORMAL);
     queue.enqueue(3, PacketPriority.NORMAL);
     
-    expect(queue.dequeue()).toBe(1);
-    expect(queue.dequeue()).toBe(2);
-    expect(queue.dequeue()).toBe(3);
+    expect(queue.dequeue()).to.equal(1);
+    expect(queue.dequeue()).to.equal(2);
+    expect(queue.dequeue()).to.equal(3);
   });
 });
 
@@ -232,7 +234,7 @@ describe('Priority Queue', () => {
 describe('Jitter Buffer', () => {
   const factory = new TestPacketFactory();
   
-  test('should buffer out-of-order packets', () => {
+  it('should buffer out-of-order packets', () => {
     const buffer = new JitterBuffer(50);
     
     // Add packets out of order
@@ -245,12 +247,12 @@ describe('Jitter Buffer', () => {
     buffer.add(p2);
     
     // Should retrieve in order
-    expect(buffer.get(p1.header.sequenceNumber)).toBeDefined();
-    expect(buffer.get(p2.header.sequenceNumber)).toBeDefined();
-    expect(buffer.get(p3.header.sequenceNumber)).toBeDefined();
+    expect(buffer.get(p1.header.sequenceNumber)).to.not.be.undefined;
+    expect(buffer.get(p2.header.sequenceNumber)).to.not.be.undefined;
+    expect(buffer.get(p3.header.sequenceNumber)).to.not.be.undefined;
   });
   
-  test('should release packets after target delay', async () => {
+  it('should release packets after target delay', async () => {
     const buffer = new JitterBuffer(50); // 50ms delay
     const now = BigInt(Date.now() * 1000);
     
@@ -265,11 +267,11 @@ describe('Jitter Buffer', () => {
     buffer.add(recentPacket);
     
     const ready = buffer.getReady(now);
-    expect(ready.length).toBe(1);
-    expect(ready[0]).toBe(oldPacket);
+    expect(ready.length).to.equal(1);
+    expect(ready[0]).to.equal(oldPacket);
   });
   
-  test('should adapt delay based on buffer occupancy', () => {
+  it('should adapt delay based on buffer occupancy', () => {
     const buffer = new JitterBuffer(50, true); // Adaptive mode
     const stats1 = buffer.getStatistics();
     
@@ -279,7 +281,7 @@ describe('Jitter Buffer', () => {
     }
     
     const stats2 = buffer.getStatistics();
-    expect(stats2.targetDelay).toBeGreaterThan(stats1.targetDelay);
+    expect(stats2.targetDelay).to.be.greaterThan(stats1.targetDelay);
   });
 });
 
@@ -290,7 +292,7 @@ describe('Jitter Buffer', () => {
 describe('Packet Stream Manager', () => {
   const factory = new TestPacketFactory();
   
-  test('should detect missing packets', () => {
+  it('should detect missing packets', () => {
     const manager = new PacketStreamManager();
     
     // Process packets 0, 1, 3 (missing 2)
@@ -299,23 +301,23 @@ describe('Packet Stream Manager', () => {
     factory.createAudioPacket(); // Skip p2
     const p3 = factory.createAudioPacket();
     
-    expect(manager.processPacket(p0).status).toBe('ok');
-    expect(manager.processPacket(p1).status).toBe('ok');
+    expect(manager.processPacket(p0).status).to.equal('ok');
+    expect(manager.processPacket(p1).status).to.equal('ok');
     
     const result = manager.processPacket(p3);
-    expect(result.status).toBe('future');
-    expect(result.missing).toContain(2);
+    expect(result.status).to.equal('future');
+    expect(result.missing).to.include(2);
     
     const missing = manager.getMissingPackets(StreamID.USER);
-    expect(missing).toContain(2);
+    expect(missing).to.include(2);
   });
   
-  test('should handle duplicate packets', () => {
+  it('should handle duplicate packets', () => {
     const manager = new PacketStreamManager();
     const packet = factory.createAudioPacket();
     
-    expect(manager.processPacket(packet).status).toBe('ok');
-    expect(manager.processPacket(packet).status).toBe('duplicate');
+    expect(manager.processPacket(packet).status).to.equal('ok');
+    expect(manager.processPacket(packet).status).to.equal('duplicate');
   });
 });
 
@@ -326,7 +328,7 @@ describe('Packet Stream Manager', () => {
 describe('Dual Stream Processor', () => {
   const factory = new TestPacketFactory();
   
-  test('should process user and AI streams in parallel', async () => {
+  it('should process user and AI streams in parallel', async () => {
     const processor = new DualStreamProcessor({
       parallelProcessing: true
     });
@@ -355,13 +357,13 @@ describe('Dual Stream Processor', () => {
     // Wait for processing
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    expect(userEvents.length).toBeGreaterThan(0);
-    expect(aiEvents.length).toBeGreaterThan(0);
+    expect(userEvents.length).to.be.greaterThan(0);
+    expect(aiEvents.length).to.be.greaterThan(0);
     
     processor.dispose();
   });
   
-  test('should prioritize critical packets', async () => {
+  it('should prioritize critical packets', async () => {
     const processor = new DualStreamProcessor();
     const processedOrder: number[] = [];
     
@@ -388,12 +390,12 @@ describe('Dual Stream Processor', () => {
     await new Promise(resolve => setTimeout(resolve, 50));
     
     // Critical should be processed first
-    expect(processedOrder[0]).toBe(critical.header.sequenceNumber);
+    expect(processedOrder[0]).to.equal(critical.header.sequenceNumber);
     
     processor.dispose();
   });
   
-  test('should handle packet retransmission requests', async () => {
+  it('should handle packet retransmission requests', async () => {
     const processor = new DualStreamProcessor();
     const retransmitRequests: any[] = [];
     
@@ -410,9 +412,9 @@ describe('Dual Stream Processor', () => {
     await processor.ingestPacket(p0);
     await processor.ingestPacket(p3);
     
-    expect(retransmitRequests.length).toBe(1);
-    expect(retransmitRequests[0].sequences).toContain(1);
-    expect(retransmitRequests[0].sequences).toContain(2);
+    expect(retransmitRequests.length).to.equal(1);
+    expect(retransmitRequests[0].sequences).to.include(1);
+    expect(retransmitRequests[0].sequences).to.include(2);
     
     processor.dispose();
   });
@@ -423,7 +425,7 @@ describe('Dual Stream Processor', () => {
 // ============================================================================
 
 describe('Stream Synchronizer', () => {
-  test('should detect overlapping speech', () => {
+  it('should detect overlapping speech', () => {
     const sync = new StreamSynchronizer();
     const now = BigInt(Date.now() * 1000);
     
@@ -434,11 +436,11 @@ describe('Stream Synchronizer', () => {
     }
     
     const overlap = sync.detectOverlap(100);
-    expect(overlap.hasOverlap).toBe(true);
-    expect(overlap.overlapDuration).toBeGreaterThan(0);
+    expect(overlap.hasOverlap).to.be.true;
+    expect(overlap.overlapDuration).to.be.greaterThan(0);
   });
   
-  test('should identify dominant stream during overlap', () => {
+  it('should identify dominant stream during overlap', () => {
     const sync = new StreamSynchronizer();
     const now = BigInt(Date.now() * 1000);
     
@@ -453,7 +455,7 @@ describe('Stream Synchronizer', () => {
     }
     
     const overlap = sync.detectOverlap(200);
-    expect(overlap.dominantStream).toBe('user');
+    expect(overlap.dominantStream).to.equal('user');
   });
 });
 
@@ -462,7 +464,7 @@ describe('Stream Synchronizer', () => {
 // ============================================================================
 
 describe('Real-Time Conversation Simulation', () => {
-  test('should handle realistic conversation flow', async () => {
+  it('should handle realistic conversation flow', async () => {
     const factory = new TestPacketFactory();
     const processor = new DualStreamProcessor();
     const sync = new StreamSynchronizer();
@@ -498,28 +500,28 @@ describe('Real-Time Conversation Simulation', () => {
     await new Promise(resolve => setTimeout(resolve, 500));
     
     // Verify conversation flow
-    expect(events.length).toBeGreaterThan(0);
+    expect(events.length).to.be.greaterThan(0);
     
     const userTexts = events.filter(e => e.type === 'userText');
     const aiTexts = events.filter(e => e.type === 'aiText');
     const emotions = events.filter(e => e.type === 'csmEmotion');
     
-    expect(userTexts.length).toBe(2);
-    expect(aiTexts.length).toBe(1);
-    expect(emotions.length).toBe(1);
+    expect(userTexts.length).to.equal(2);
+    expect(aiTexts.length).to.equal(1);
+    expect(emotions.length).to.equal(1);
     
     // Check emotion was joy
-    expect(emotions[0].detail.payload.primary.emotion).toBe('joy');
+    expect(emotions[0].detail.payload.primary.emotion).to.equal('joy');
     
     // Verify timing
     const firstUserText = userTexts[0].time;
     const firstAIText = aiTexts[0].time;
-    expect(firstAIText).toBeGreaterThan(firstUserText);
+    expect(firstAIText).to.be.greaterThan(firstUserText);
     
     processor.dispose();
   });
   
-  test('should handle interruption scenario', async () => {
+  it('should handle interruption scenario', async () => {
     const factory = new TestPacketFactory();
     const processor = new DualStreamProcessor();
     
@@ -550,7 +552,7 @@ describe('Real-Time Conversation Simulation', () => {
       interruptionDetected = true;
     }
     
-    expect(interruptionDetected).toBe(true);
+    expect(interruptionDetected).to.be.true;
     
     processor.dispose();
   });
@@ -563,7 +565,7 @@ describe('Real-Time Conversation Simulation', () => {
 describe('Performance Tests', () => {
   const factory = new TestPacketFactory();
   
-  test('should handle high packet throughput', async () => {
+  it('should handle high packet throughput', async () => {
     const processor = new DualStreamProcessor();
     const startTime = performance.now();
     
@@ -582,13 +584,13 @@ describe('Performance Tests', () => {
     console.log(`Average latency: ${stats.averageLatency.toFixed(2)}ms`);
     console.log(`Throughput: ${(packets.length / (elapsed / 1000)).toFixed(2)} packets/sec`);
     
-    expect(elapsed).toBeLessThan(5000); // Should process 1000 packets in < 5 seconds
-    expect(stats.averageLatency).toBeLessThan(10); // Average latency < 10ms
+    expect(elapsed).to.be.lessThan(5000); // Should process 1000 packets in < 5 seconds
+    expect(stats.averageLatency).to.be.lessThan(10); // Average latency < 10ms
     
     processor.dispose();
   });
   
-  test('should maintain low memory footprint', async () => {
+  it('should maintain low memory footprint', async () => {
     const processor = new DualStreamProcessor();
     
     // Track memory before
@@ -607,7 +609,7 @@ describe('Performance Tests', () => {
     console.log(`Memory increase: ${memIncrease.toFixed(2)} MB`);
     
     // Should not leak significant memory
-    expect(memIncrease).toBeLessThan(50); // Less than 50MB increase
+    expect(memIncrease).to.be.lessThan(50); // Less than 50MB increase
     
     processor.dispose();
   });
@@ -620,11 +622,11 @@ describe('Performance Tests', () => {
 describe('Edge Cases', () => {
   const factory = new TestPacketFactory();
   
-  test('should handle corrupted packets gracefully', () => {
+  it('should handle corrupted packets gracefully', () => {
     const processor = new DualStreamProcessor();
     
     processor.addEventListener('error', (e: any) => {
-      expect(e.detail).toBeDefined();
+      expect(e.detail).to.exist;
     });
     
     // Create corrupted packet
@@ -634,12 +636,12 @@ describe('Edge Cases', () => {
     // Should not crash
     expect(async () => {
       await processor.ingestPacket(packet);
-    }).not.toThrow();
+    }).to.not.throw();
     
     processor.dispose();
   });
   
-  test('should handle extreme packet reordering', async () => {
+  it('should handle extreme packet reordering', async () => {
     const manager = new PacketStreamManager();
     const packets = factory.createBurstOfPackets(10, StreamID.USER);
     
@@ -648,17 +650,17 @@ describe('Edge Cases', () => {
       const result = manager.processPacket(packets[i]);
       
       if (i === packets.length - 1) {
-        expect(result.status).toBe('future');
-        expect(result.missing?.length).toBe(packets.length - 1);
+        expect(result.status).to.equal('future');
+        expect(result.missing?.length).to.equal(packets.length - 1);
       }
     }
     
     // All packets should be marked as missing initially except the last
     const missing = manager.getMissingPackets(StreamID.USER);
-    expect(missing.length).toBeGreaterThan(0);
+    expect(missing.length).to.be.greaterThan(0);
   });
   
-  test('should handle packet timestamp wraparound', () => {
+  it('should handle packet timestamp wraparound', () => {
     const sync = new StreamSynchronizer();
     
     // Test with max bigint values
@@ -668,7 +670,7 @@ describe('Edge Cases', () => {
     
     // Should not crash
     const overlap = sync.detectOverlap(100);
-    expect(overlap).toBeDefined();
+    expect(overlap).to.exist;
   });
 });
 

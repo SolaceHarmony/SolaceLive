@@ -66,7 +66,6 @@ export function buildQ8KWeight(buf: Buffer, spec: Q8KSpec, baseOffset = 0): Q8KW
     // x: [K] or [B,K]
     const xShape = x.shape as number[];
     const batched = xShape.length === 2;
-    const K = spec.cols;
     // reshape x to blocks
     const xb = batched
       ? (mx as any).reshape(x, [xShape[0], blocks, QK_K])
@@ -76,14 +75,24 @@ export function buildQ8KWeight(buf: Buffer, spec: Q8KSpec, baseOffset = 0): Q8KW
     const qsf = (qs as any).astype('float16');
     const xbCast = (xb as any).astype('float16');
 
-    const blockDot = batched
-      ? (mx as any).sum((qsf as any)[null] * xbCast[:, null], -1) // [B, rows, blocks]
-      : (mx as any).sum(qsf * xbCast[null], -1); // [rows, blocks]
+    let blockDot: any;
+    if (batched) {
+      const qsfExpanded = mx.expand_dims(qsf, 0); // [1, rows, blocks, 256]
+      const xbExpanded = mx.expand_dims(xbCast, 1); // [B, 1, blocks, 256]
+      const prod = mx.multiply(qsfExpanded, xbExpanded); // [B, rows, blocks, 256]
+      blockDot = mx.sum(prod, -1); // [B, rows, blocks]
+    } else {
+      const xbExpanded = mx.expand_dims(xbCast, 0); // [1, blocks, 256]
+      const prod = mx.multiply(qsf, xbExpanded); // [rows, blocks, 256]
+      blockDot = mx.sum(prod, -1); // [rows, blocks]
+    }
 
     // apply scales per block and sum over blocks
     const scalesf = (scales as any).astype('float16');
-    const scaled = blockDot * (batched ? scalesf[null] : scalesf);
-    let y = (mx as any).sum(scaled, -1); // [B, rows] or [rows]
+    const scaled = batched
+      ? mx.multiply(blockDot, mx.expand_dims(scalesf, 0))
+      : mx.multiply(blockDot, scalesf);
+    let y = mx.sum(scaled, -1); // [B, rows] or [rows]
 
     if (outDType === 'f32') {
       y = (y as any).astype('float32');
@@ -93,4 +102,3 @@ export function buildQ8KWeight(buf: Buffer, spec: Q8KSpec, baseOffset = 0): Q8KW
 
   return { spec, scales, qs, forward };
 }
-

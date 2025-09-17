@@ -3,11 +3,13 @@
  * Tests every edge case and boundary condition
  */
 
+import { describe, it } from 'mocha';
+import { expect } from 'chai';
 import { PacketEncoder, PacketType, StreamID, PacketFlags, PacketPriority } from './packets';
 
 describe('PacketEncoder - Header Encoding', () => {
   
-  test('should encode version byte correctly', () => {
+  it('should encode version byte correctly', () => {
     const versions = [0, 1, 127, 255];
     versions.forEach(version => {
       const packet = {
@@ -24,11 +26,11 @@ describe('PacketEncoder - Header Encoding', () => {
       };
       
       const encoded = PacketEncoder.encode(packet);
-      expect(encoded[0]).toBe(version);
+      expect(encoded[0]).to.equal(version);
     });
   });
 
-  test('should encode all packet types correctly', () => {
+  it('should encode all packet types correctly', () => {
     const types = [
       PacketType.HANDSHAKE,
       PacketType.HEARTBEAT,
@@ -53,11 +55,11 @@ describe('PacketEncoder - Header Encoding', () => {
       };
       
       const encoded = PacketEncoder.encode(packet);
-      expect(encoded[1]).toBe(type);
+      expect(encoded[1]).to.equal(type);
     });
   });
 
-  test('should encode stream IDs with correct byte order', () => {
+  it('should encode stream IDs with correct byte order', () => {
     const packet = {
       header: {
         version: 1,
@@ -73,10 +75,10 @@ describe('PacketEncoder - Header Encoding', () => {
     
     const encoded = PacketEncoder.encode(packet);
     const view = new DataView(encoded.buffer);
-    expect(view.getUint16(2, true)).toBe(StreamID.AI);
+    expect(view.getUint16(2, true)).to.equal(StreamID.AI);
   });
 
-  test('should encode sequence numbers up to max uint32', () => {
+  it('should encode sequence numbers up to max uint32', () => {
     const sequences = [0, 1, 65535, 16777215, 4294967295];
     
     sequences.forEach(seq => {
@@ -95,11 +97,11 @@ describe('PacketEncoder - Header Encoding', () => {
       
       const encoded = PacketEncoder.encode(packet);
       const view = new DataView(encoded.buffer);
-      expect(view.getUint32(4, true)).toBe(seq);
+      expect(view.getUint32(4, true)).to.equal(seq);
     });
   });
 
-  test('should encode 64-bit timestamps correctly', () => {
+  it('should encode 64-bit timestamps correctly', () => {
     const timestamps = [
       BigInt(0),
       BigInt(1234567890),
@@ -122,11 +124,11 @@ describe('PacketEncoder - Header Encoding', () => {
       
       const encoded = PacketEncoder.encode(packet);
       const view = new DataView(encoded.buffer);
-      expect(view.getBigUint64(8, true)).toBe(ts);
+      expect(view.getBigUint64(8, true)).to.equal(ts);
     });
   });
 
-  test('should encode flag combinations correctly', () => {
+  it('should encode flag combinations correctly', () => {
     const flagCombos = [
       PacketFlags.NONE,
       PacketFlags.ENCRYPTED,
@@ -153,11 +155,11 @@ describe('PacketEncoder - Header Encoding', () => {
       
       const encoded = PacketEncoder.encode(packet);
       const view = new DataView(encoded.buffer);
-      expect(view.getUint16(16, true)).toBe(flags);
+      expect(view.getUint16(16, true)).to.equal(flags);
     });
   });
 
-  test('should calculate payload length correctly', () => {
+  it('should calculate payload length correctly', () => {
     const payloadSizes = [0, 1, 100, 1000, 65535];
     
     payloadSizes.forEach(size => {
@@ -183,11 +185,11 @@ describe('PacketEncoder - Header Encoding', () => {
       
       const encoded = PacketEncoder.encode(packet);
       const view = new DataView(encoded.buffer);
-      expect(view.getUint16(18, true)).toBe(size);
+      expect(view.getUint16(18, true)).to.equal(size);
     });
   });
 
-  test('should include optional checksum when provided', () => {
+  it('should include optional checksum when provided', () => {
     const checksum = 0xDEADBEEF;
     const packet = {
       header: {
@@ -205,13 +207,13 @@ describe('PacketEncoder - Header Encoding', () => {
     
     const encoded = PacketEncoder.encode(packet);
     const view = new DataView(encoded.buffer);
-    expect(view.getUint32(20, true)).toBe(checksum);
+    expect(view.getUint32(20, true)).to.equal(checksum);
   });
 });
 
 describe('PacketEncoder - Audio Payload Encoding', () => {
 
-  test('should encode Float32Array audio data', () => {
+  it('should encode Float32Array audio data', () => {
     const samples = 320; // 20ms at 16kHz
     const audioData = new Float32Array(samples);
     for (let i = 0; i < samples; i++) {
@@ -238,10 +240,10 @@ describe('PacketEncoder - Audio Payload Encoding', () => {
     };
     
     const encoded = PacketEncoder.encode(packet);
-    expect(encoded.length).toBeGreaterThan(24); // Header + metadata + audio
+    expect(encoded.length).to.be.greaterThan(24); // Header + metadata + audio
   });
 
-  test('should encode Uint8Array compressed audio', () => {
+  it('should encode Uint8Array compressed audio', () => {
     const compressedData = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05]);
     
     const packet = {
@@ -264,11 +266,12 @@ describe('PacketEncoder - Audio Payload Encoding', () => {
     };
     
     const encoded = PacketEncoder.encode(packet);
-    expect(encoded).toContain(0x01);
-    expect(encoded).toContain(0x05);
+    const encodedArray = Array.from(encoded);
+    expect(encodedArray).to.include(0x01);
+    expect(encodedArray).to.include(0x05);
   });
 
-  test('should preserve audio metadata in encoding', () => {
+  it('should preserve audio metadata in encoding', () => {
     const metadata = {
       sampleRate: 48000,
       channels: 2,
@@ -312,13 +315,13 @@ describe('PacketEncoder - Audio Payload Encoding', () => {
         break;
       }
     }
-    expect(found).toBe(true);
+    expect(found).to.be.true;
   });
 });
 
 describe('PacketEncoder - Text Payload Encoding', () => {
 
-  test('should encode ASCII text correctly', () => {
+  it('should encode ASCII text correctly', () => {
     const text = "Hello, World!";
     const packet = {
       header: {
@@ -341,10 +344,10 @@ describe('PacketEncoder - Text Payload Encoding', () => {
     const encoded = PacketEncoder.encode(packet);
     const decoder = new TextDecoder();
     const payloadStr = decoder.decode(encoded.slice(24)); // Skip header
-    expect(payloadStr).toContain(text);
+    expect(payloadStr).to.include(text);
   });
 
-  test('should encode Unicode text correctly', () => {
+  it('should encode Unicode text correctly', () => {
     const texts = [
       "Hello 世界", // Chinese
       "Привет мир", // Russian
@@ -375,11 +378,11 @@ describe('PacketEncoder - Text Payload Encoding', () => {
       const encoded = PacketEncoder.encode(packet);
       const payloadStr = new TextDecoder().decode(encoded.slice(24));
       const payload = JSON.parse(payloadStr);
-      expect(payload.text).toBe(text);
+      expect(payload.text).to.equal(text);
     });
   });
 
-  test('should encode text with token information', () => {
+  it('should encode text with token information', () => {
     const packet = {
       header: {
         version: 1,
@@ -405,14 +408,14 @@ describe('PacketEncoder - Text Payload Encoding', () => {
     const encoded = PacketEncoder.encode(packet);
     const payloadStr = new TextDecoder().decode(encoded.slice(24));
     const decoded = JSON.parse(payloadStr);
-    expect(decoded.tokens).toHaveLength(2);
-    expect(decoded.tokens[0].text).toBe("Hello");
+    expect(decoded.tokens).to.have.lengthOf(2);
+    expect(decoded.tokens[0].text).to.equal("Hello");
   });
 });
 
 describe('PacketEncoder - CSM Payload Encoding', () => {
 
-  test('should encode emotion packets with all fields', () => {
+  it('should encode emotion packets with all fields', () => {
     const packet = {
       header: {
         version: 1,
@@ -437,12 +440,12 @@ describe('PacketEncoder - CSM Payload Encoding', () => {
     const payloadStr = new TextDecoder().decode(encoded.slice(24));
     const decoded = JSON.parse(payloadStr);
     
-    expect(decoded.primary.emotion).toBe('joy');
-    expect(decoded.secondary.emotion).toBe('surprise');
-    expect(decoded.triggers).toContain('user_compliment');
+    expect(decoded.primary.emotion).to.equal('joy');
+    expect(decoded.secondary.emotion).to.equal('surprise');
+    expect(decoded.triggers).to.include('user_compliment');
   });
 
-  test('should encode context packets with nested objects', () => {
+  it('should encode context packets with nested objects', () => {
     const packet = {
       header: {
         version: 1,
@@ -474,19 +477,19 @@ describe('PacketEncoder - CSM Payload Encoding', () => {
     };
     
     const encoded = PacketEncoder.encode(packet);
-    expect(encoded.length).toBeGreaterThan(24);
+    expect(encoded.length).to.be.greaterThan(24);
     
     // Verify complex structure survives encoding
     const payloadStr = new TextDecoder().decode(encoded.slice(24));
     const decoded = JSON.parse(payloadStr);
-    expect(decoded.entities[0].type).toBe('location');
-    expect(decoded.relationships[0].predicate).toBe('located_in');
+    expect(decoded.entities[0].type).to.equal('location');
+    expect(decoded.relationships[0].predicate).to.equal('located_in');
   });
 });
 
 describe('PacketEncoder - Metadata Encoding', () => {
 
-  test('should encode packet metadata correctly', () => {
+  it('should encode packet metadata correctly', () => {
     const packet = {
       header: {
         version: 1,
@@ -508,13 +511,13 @@ describe('PacketEncoder - Metadata Encoding', () => {
     
     const encoded = PacketEncoder.encode(packet);
     // Metadata should be appended after payload
-    expect(encoded.length).toBeGreaterThan(24);
+    expect(encoded.length).to.be.greaterThan(24);
     
     // Check priority byte
-    expect(encoded[24]).toBe(PacketPriority.CRITICAL);
+    expect(encoded[24]).to.equal(PacketPriority.CRITICAL);
   });
 
-  test('should encode fragment information', () => {
+  it('should encode fragment information', () => {
     const packet = {
       header: {
         version: 1,
@@ -539,13 +542,13 @@ describe('PacketEncoder - Metadata Encoding', () => {
     };
     
     const encoded = PacketEncoder.encode(packet);
-    expect(encoded.length).toBeGreaterThan(24);
+    expect(encoded.length).to.be.greaterThan(24);
   });
 });
 
 describe('PacketEncoder - Stress Tests', () => {
 
-  test('should handle maximum size payloads', () => {
+  it('should handle maximum size payloads', () => {
     const maxSize = 65535; // Max uint16
     const largePayload = new Uint8Array(maxSize);
     for (let i = 0; i < maxSize; i++) {
@@ -572,10 +575,10 @@ describe('PacketEncoder - Stress Tests', () => {
     };
     
     const encoded = PacketEncoder.encode(packet);
-    expect(encoded.length).toBeGreaterThan(maxSize);
+    expect(encoded.length).to.be.greaterThan(maxSize);
   });
 
-  test('should encode 1000 packets without memory issues', () => {
+  it('should encode 1000 packets without memory issues', () => {
     const startMem = (performance as any).memory?.usedJSHeapSize || 0;
     const packets: Uint8Array[] = [];
     
@@ -605,11 +608,11 @@ describe('PacketEncoder - Stress Tests', () => {
     const endMem = (performance as any).memory?.usedJSHeapSize || 0;
     const memIncrease = (endMem - startMem) / 1024 / 1024;
     
-    expect(packets).toHaveLength(1000);
-    expect(memIncrease).toBeLessThan(100); // Less than 100MB for 1000 packets
+    expect(packets).to.have.lengthOf(1000);
+    expect(memIncrease).to.be.lessThan(100); // Less than 100MB for 1000 packets
   });
 
-  test('should handle rapid successive encoding', () => {
+  it('should handle rapid successive encoding', () => {
     const startTime = performance.now();
     const iterations = 10000;
     
@@ -636,13 +639,13 @@ describe('PacketEncoder - Stress Tests', () => {
     console.log(`Encoded ${iterations} packets in ${elapsed.toFixed(2)}ms`);
     console.log(`Throughput: ${packetsPerSecond.toFixed(0)} packets/sec`);
     
-    expect(packetsPerSecond).toBeGreaterThan(10000); // Should encode >10k packets/sec
+    expect(packetsPerSecond).to.be.greaterThan(10000); // Should encode >10k packets/sec
   });
 });
 
 describe('PacketEncoder - Edge Cases', () => {
 
-  test('should handle empty payloads', () => {
+  it('should handle empty payloads', () => {
     const packet = {
       header: {
         version: 1,
@@ -657,10 +660,10 @@ describe('PacketEncoder - Edge Cases', () => {
     };
     
     const encoded = PacketEncoder.encode(packet);
-    expect(encoded.length).toBe(24); // Just header, no payload
+    expect(encoded.length).to.equal(24); // Just header, no payload
   });
 
-  test('should handle null/undefined fields gracefully', () => {
+  it('should handle null/undefined fields gracefully', () => {
     const packet = {
       header: {
         version: 1,
@@ -681,10 +684,10 @@ describe('PacketEncoder - Edge Cases', () => {
       }
     };
     
-    expect(() => PacketEncoder.encode(packet)).not.toThrow();
+    expect(() => PacketEncoder.encode(packet)).to.not.throw();
   });
 
-  test('should handle special characters in text', () => {
+  it('should handle special characters in text', () => {
     const specialChars = [
       '\0', // Null character
       '\n\r\t', // Whitespace
@@ -713,11 +716,11 @@ describe('PacketEncoder - Edge Cases', () => {
         }
       };
       
-      expect(() => PacketEncoder.encode(packet)).not.toThrow();
+      expect(() => PacketEncoder.encode(packet)).to.not.throw();
     });
   });
 
-  test('should handle extremely long strings', () => {
+  it('should handle extremely long strings', () => {
     const longString = 'A'.repeat(100000); // 100k characters
     
     const packet = {
@@ -739,10 +742,10 @@ describe('PacketEncoder - Edge Cases', () => {
     };
     
     const encoded = PacketEncoder.encode(packet);
-    expect(encoded.length).toBeGreaterThan(100000);
+    expect(encoded.length).to.be.greaterThan(100000);
   });
 
-  test('should maintain precision for floating point values', () => {
+  it('should maintain precision for floating point values', () => {
     const preciseValues = [
       0.123456789012345,
       Math.PI,
@@ -776,7 +779,7 @@ describe('PacketEncoder - Edge Cases', () => {
       const decoded = JSON.parse(payloadStr);
       
       // JSON might lose some precision, but should be close
-      expect(Math.abs(decoded.valence - value)).toBeLessThan(0.0000001);
+      expect(Math.abs(decoded.valence - value)).to.be.lessThan(0.0000001);
     });
   });
 });

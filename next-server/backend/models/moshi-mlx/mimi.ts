@@ -1,4 +1,8 @@
+import { promises as fs } from 'fs';
+import path from 'path';
 import mlx from '@frost-beta/mlx';
+import { hfGet } from '../../../lib/hf-loader';
+import { readSafetensors } from './weights/loader';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const { core: mx } = mlx;
 
@@ -39,6 +43,13 @@ export class Mimi {
   private encodeRemainder = new Float32Array(0);
 
   private weightsLoaded = false;
+  private weightSummary: {
+    path: string;
+    sizeBytes: number;
+    tensorCount: number;
+    dtypes: string[];
+    sampleKeys: string[];
+  } | null = null;
 
   /** Debug info for health/weights endpoints. */
   debugInfo(): Record<string, unknown> {
@@ -53,6 +64,7 @@ export class Mimi {
       batchSize: this.batchSize,
       execMaskActiveCount: Array.isArray(this.execMask) ? this.execMask.filter(Boolean).length : 0,
       encodeRemainderSamples: this.encodeRemainder?.length ?? 0,
+      weights: this.weightSummary,
     };
   }
 
@@ -76,8 +88,38 @@ export class Mimi {
 
   /** Load Mimi codec weights (required). */
   async loadWeights(source: unknown): Promise<void> {
-    // TODO: Implement real loader (HF/local). Accept explicit source for now.
     if (!source) throw new Error('Mimi.loadWeights: weight source is required');
+    this.weightsLoaded = false;
+    this.weightSummary = null;
+    const resolved = await this.resolveSourceToFile(source);
+    const stat = await fs.stat(resolved);
+    if (!stat.isFile()) {
+      throw new Error(`Mimi.loadWeights: expected file, got ${resolved}`);
+    }
+
+    const { header } = await readSafetensors(resolved);
+    const keys = Object.keys(header);
+    if (keys.length === 0) {
+      throw new Error('Mimi.loadWeights: safetensors file contained no tensors');
+    }
+
+    const lowercaseKeys = keys.map((k) => k.toLowerCase());
+    const requiredHints = ['encoder', 'decoder', 'quantizer', 'rvq', 'codebook'];
+    const hasExpected = lowercaseKeys.some((k) => requiredHints.some((hint) => k.includes(hint)));
+    if (!hasExpected) {
+      throw new Error('Mimi.loadWeights: weights did not include expected encoder/quantizer tensors');
+    }
+
+    const dtypes = Array.from(new Set(Object.values(header).map((info) => info.dtype.toLowerCase())));
+    const sampleKeys = keys.slice(0, Math.min(8, keys.length));
+
+    this.weightSummary = {
+      path: path.resolve(resolved),
+      sizeBytes: stat.size,
+      tensorCount: keys.length,
+      dtypes,
+      sampleKeys,
+    };
     this.weightsLoaded = true;
   }
 
@@ -151,6 +193,20 @@ export class Mimi {
     if (steps === 0) return new Float32Array(0);
 
     throw new Error('Mimi.decode: decoder not implemented in TS. Provide backend/bindings.');
+  }
+
+  private async resolveSourceToFile(source: unknown): Promise<string> {
+    if (typeof source === 'string') {
+      return hfGet(source);
+    }
+    if (source && typeof source === 'object') {
+      const obj = source as { path?: string; file?: string; repo?: string };
+      const candidate = obj.path || obj.file;
+      if (typeof candidate === 'string') {
+        return hfGet(candidate, obj.repo);
+      }
+    }
+    throw new Error('Mimi.loadWeights: unsupported weight source');
   }
 }
 

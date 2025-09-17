@@ -3,6 +3,8 @@
  * Tests performance, memory usage, and edge cases under extreme load
  */
 
+import { describe, it } from 'mocha';
+import { expect } from 'chai';
 import {
   PriorityQueue,
   JitterBuffer,
@@ -26,7 +28,7 @@ import {
 
 describe('PriorityQueue - Stress Tests', () => {
 
-  test('should handle 100,000 items efficiently', () => {
+  it('should handle 100,000 items efficiently', () => {
     const queue = new PriorityQueue<number>();
     const itemCount = 100000;
     const startTime = performance.now();
@@ -49,7 +51,7 @@ describe('PriorityQueue - Stress Tests', () => {
       dequeued++;
       // Verify priority order is maintained
       if (dequeued <= 5) { // Check first few items
-        expect(item).toBeDefined();
+        expect(item).to.not.be.undefined;
       }
     }
     
@@ -58,12 +60,12 @@ describe('PriorityQueue - Stress Tests', () => {
     console.log(`PriorityQueue: Enqueued ${itemCount} items in ${enqueueTime.toFixed(2)}ms`);
     console.log(`PriorityQueue: Dequeued ${itemCount} items in ${dequeueTime.toFixed(2)}ms`);
     
-    expect(dequeued).toBe(itemCount);
-    expect(enqueueTime).toBeLessThan(5000); // Should enqueue 100k items in < 5s
-    expect(dequeueTime).toBeLessThan(1000); // Should dequeue 100k items in < 1s
+    expect(dequeued).to.equal(itemCount);
+    expect(enqueueTime).to.be.lessThan(5000); // Should enqueue 100k items in < 5s
+    expect(dequeueTime).to.be.lessThan(1000); // Should dequeue 100k items in < 1s
   });
 
-  test('should maintain correct order with identical priorities', () => {
+  it('should maintain correct order with identical priorities', () => {
     const queue = new PriorityQueue<string>();
     const itemsPerPriority = 10000;
     
@@ -90,12 +92,12 @@ describe('PriorityQueue - Stress Tests', () => {
       }
       
       const lastIndex = itemIndexes.get(priority)!;
-      expect(index).toBeGreaterThan(lastIndex); // FIFO order
+      expect(index).to.be.greaterThan(lastIndex); // FIFO order
       itemIndexes.set(priority, index);
     }
   });
 
-  test('should handle rapid enqueue/dequeue cycles', () => {
+  it('should handle rapid enqueue/dequeue cycles', () => {
     const queue = new PriorityQueue<number>();
     const cycles = 10000;
     const startTime = performance.now();
@@ -118,11 +120,11 @@ describe('PriorityQueue - Stress Tests', () => {
     console.log(`PriorityQueue: ${cycles} cycles in ${elapsed.toFixed(2)}ms`);
     console.log(`PriorityQueue: ${opsPerSecond.toFixed(0)} operations/sec`);
     
-    expect(queue.length).toBe(cycles * 5); // Half remain
-    expect(opsPerSecond).toBeGreaterThan(50000); // >50k ops/sec
+    expect(queue.length).to.equal(cycles * 5); // Half remain
+    expect(opsPerSecond).to.be.greaterThan(50000); // >50k ops/sec
   });
 
-  test('should not leak memory over time', () => {
+  it('should not leak memory over time', () => {
     const queue = new PriorityQueue<Uint8Array>();
     const initialMem = (performance as any).memory?.usedJSHeapSize || 0;
     
@@ -147,7 +149,7 @@ describe('PriorityQueue - Stress Tests', () => {
     const memLeaked = (finalMem - initialMem) / 1024 / 1024;
     
     console.log(`PriorityQueue: Memory leaked: ${memLeaked.toFixed(2)}MB`);
-    expect(memLeaked).toBeLessThan(10); // Less than 10MB leaked
+    expect(memLeaked).to.be.lessThan(10); // Less than 10MB leaked
   });
 });
 
@@ -157,7 +159,7 @@ describe('PriorityQueue - Stress Tests', () => {
 
 describe('JitterBuffer - Stress Tests', () => {
 
-  test('should handle extreme packet disorder', () => {
+  it('should handle extreme packet disorder', () => {
     const buffer = new JitterBuffer(50);
     const packetCount = 1000;
     const packets: Packet[] = [];
@@ -195,11 +197,11 @@ describe('JitterBuffer - Stress Tests', () => {
     console.log(`JitterBuffer: Retrieved ${retrieved.length} packets`);
     
     // Verify some packets were buffered and retrieved
-    expect(retrieved.length).toBeGreaterThan(0);
-    expect(addTime).toBeLessThan(1000);
+    expect(retrieved.length).to.be.greaterThan(0);
+    expect(addTime).to.be.lessThan(1000);
   });
 
-  test('should adapt to varying network conditions', () => {
+  it('should adapt to varying network conditions', () => {
     const buffer = new JitterBuffer(50, true);
     const baseTime = BigInt(Date.now() * 1000);
     
@@ -230,11 +232,11 @@ describe('JitterBuffer - Stress Tests', () => {
     });
     
     const finalStats = buffer.getStatistics();
-    expect(finalStats.packetsReceived).toBe(400);
-    expect(finalStats.targetDelay).toBeGreaterThan(50); // Should have adapted up
+    expect(finalStats.packetsReceived).to.equal(400);
+    expect(finalStats.targetDelay).to.be.greaterThan(50); // Should have adapted up
   });
 
-  test('should handle burst traffic', () => {
+  it('should handle burst traffic', () => {
     const buffer = new JitterBuffer(50);
     const burstSize = 500;
     const bursts = 10;
@@ -262,10 +264,10 @@ describe('JitterBuffer - Stress Tests', () => {
     }
     
     const stats = buffer.getStatistics();
-    expect(stats.packetsReceived).toBe(burstSize * bursts);
+    expect(stats.packetsReceived).to.equal(burstSize * bursts);
   });
 
-  test('should maintain performance with full buffer', () => {
+  it('should maintain performance with full buffer', () => {
     const buffer = new JitterBuffer(50);
     const maxSize = 100; // Buffer max size
     
@@ -280,7 +282,7 @@ describe('JitterBuffer - Stress Tests', () => {
     }
     
     const stats = buffer.getStatistics();
-    expect(stats.packetsDropped).toBeGreaterThan(0); // Some should be dropped
+    expect(stats.packetsDropped).to.be.greaterThan(0); // Some should be dropped
     
     // Measure retrieval performance with full buffer
     const startTime = performance.now();
@@ -290,7 +292,7 @@ describe('JitterBuffer - Stress Tests', () => {
     const retrievalTime = performance.now() - startTime;
     
     console.log(`JitterBuffer: Retrieved ${maxSize} from full buffer in ${retrievalTime.toFixed(2)}ms`);
-    expect(retrievalTime).toBeLessThan(100); // Should be fast even when full
+    expect(retrievalTime).to.be.lessThan(100); // Should be fast even when full
   });
 });
 
@@ -300,7 +302,7 @@ describe('JitterBuffer - Stress Tests', () => {
 
 describe('DualStreamProcessor - Stress Tests', () => {
 
-  test('should handle 10,000 packets per second', async () => {
+  it('should handle 10,000 packets per second', async () => {
     const processor = new DualStreamProcessor({
       parallelProcessing: true,
       maxConcurrentTasks: 8
@@ -345,11 +347,11 @@ describe('DualStreamProcessor - Stress Tests', () => {
     console.log(`DualStreamProcessor: Processed ${processed}/${totalPackets} packets`);
     console.log(`DualStreamProcessor: Rate: ${actualRate.toFixed(0)} packets/sec`);
     
-    expect(processed).toBeGreaterThan(totalPackets * 0.9); // >90% processed
+    expect(processed).to.be.greaterThan(totalPackets * 0.9); // >90% processed
     processor.dispose();
   });
 
-  test('should handle mixed packet types simultaneously', async () => {
+  it('should handle mixed packet types simultaneously', async () => {
     const processor = new DualStreamProcessor();
     const packetTypes = [
       PacketType.AUDIO_PCM,
@@ -383,7 +385,7 @@ describe('DualStreamProcessor - Stress Tests', () => {
             flags: PacketFlags.NONE,
             length: 0
           },
-          payload: this.createPayloadForType(type)
+          payload: createPayloadForType(type)
         };
         
         await processor.ingestPacket(packet);
@@ -394,12 +396,12 @@ describe('DualStreamProcessor - Stress Tests', () => {
     await new Promise(resolve => setTimeout(resolve, 500));
     
     console.log('DualStreamProcessor: Event counts:', Object.fromEntries(events));
-    expect(events.size).toBeGreaterThan(0);
+    expect(events.size).to.be.greaterThan(0);
     
     processor.dispose();
   });
 
-  test('should maintain synchronization under heavy load', async () => {
+  it('should maintain synchronization under heavy load', async () => {
     const processor = new DualStreamProcessor();
     const sync = new StreamSynchronizer();
     
@@ -437,12 +439,12 @@ describe('DualStreamProcessor - Stress Tests', () => {
     console.log(`DualStreamProcessor: Sync action: ${syncState.action}`);
     
     const stats = processor.getStatistics();
-    expect(stats.userPacketsProcessed + stats.aiPacketsProcessed).toBeGreaterThan(0);
+    expect(stats.userPacketsProcessed + stats.aiPacketsProcessed).to.be.greaterThan(0);
     
     processor.dispose();
   });
 
-  test('should handle packet loss and recovery', async () => {
+  it('should handle packet loss and recovery', async () => {
     const processor = new DualStreamProcessor();
     const lossRate = 0.05; // 5% packet loss
     let retransmitRequests = 0;
@@ -477,8 +479,10 @@ describe('DualStreamProcessor - Stress Tests', () => {
     console.log(`DualStreamProcessor: Dropped ${droppedPackets} packets`);
     console.log(`DualStreamProcessor: Retransmit requests: ${retransmitRequests}`);
     
-    expect(retransmitRequests).toBeGreaterThan(0);
-    expect(droppedPackets).toBeCloseTo(totalPackets * lossRate, -1);
+    expect(retransmitRequests).to.be.greaterThan(0);
+    const expectedDrops = totalPackets * lossRate;
+    const tolerance = 5; // Approximate original precision tolerance
+    expect(droppedPackets).to.be.closeTo(expectedDrops, tolerance);
     
     processor.dispose();
   });
@@ -543,7 +547,7 @@ describe('DualStreamProcessor - Stress Tests', () => {
 
 describe('Memory Leak Tests', () => {
 
-  test('should clean up after dispose', async () => {
+  it('should clean up after dispose', async () => {
     const initialMem = (performance as any).memory?.usedJSHeapSize || 0;
     
     // Create and destroy many processors
@@ -571,10 +575,10 @@ describe('Memory Leak Tests', () => {
     const leaked = (finalMem - initialMem) / 1024 / 1024;
     
     console.log(`Memory Leak Test: ${leaked.toFixed(2)}MB leaked after 10 processor cycles`);
-    expect(leaked).toBeLessThan(50); // Less than 50MB leaked
+    expect(leaked).to.be.lessThan(50); // Less than 50MB leaked
   });
 
-  test('should handle event listener cleanup', () => {
+  it('should handle event listener cleanup', () => {
     const processor = new DualStreamProcessor();
     const listeners: Array<() => void> = [];
     
@@ -594,7 +598,7 @@ describe('Memory Leak Tests', () => {
     
     // Verify no memory leak from listeners
     const hasListeners = (processor as any).listeners?.size > 0;
-    expect(hasListeners).toBeFalsy();
+    expect(hasListeners).to.be.false;
   });
 });
 
@@ -604,7 +608,7 @@ describe('Memory Leak Tests', () => {
 
 describe('Packet Corruption & Recovery', () => {
 
-  test('should detect corrupted headers', () => {
+  it('should detect corrupted headers', () => {
     const manager = new PacketStreamManager();
     
     // Create packet with invalid sequence (negative)
@@ -623,10 +627,10 @@ describe('Packet Corruption & Recovery', () => {
     
     // Should handle gracefully
     const result = manager.processPacket(packet);
-    expect(result).toBeDefined();
+    expect(result).to.not.be.undefined;
   });
 
-  test('should handle bit flips in data', () => {
+  it('should handle bit flips in data', () => {
     const original = PacketUtils.createAudioPacket(
       new Float32Array([0.5, -0.5, 0.5, -0.5]),
       StreamID.USER,
@@ -643,11 +647,11 @@ describe('Packet Corruption & Recovery', () => {
       const checksum1 = PacketUtils.calculateChecksum(original);
       original.payload.audioData[0] = NaN; // Corrupt data
       const checksum2 = PacketUtils.calculateChecksum(original);
-      expect(checksum1).not.toBe(checksum2);
-    }).not.toThrow();
+      expect(checksum1).to.not.equal(checksum2);
+    }).to.not.throw();
   });
 
-  test('should recover from missing packet sequences', async () => {
+  it('should recover from missing packet sequences', async () => {
     const processor = new DualStreamProcessor();
     const manager = new PacketStreamManager();
     
@@ -671,8 +675,8 @@ describe('Packet Corruption & Recovery', () => {
     
     // Verify missing packets were detected
     const missing = manager.getMissingPackets(StreamID.USER);
-    expect(missing).toContain(3);
-    expect(missing).toContain(4);
+    expect(missing).to.include(3);
+    expect(missing).to.include(4);
     
     processor.dispose();
   });
@@ -684,7 +688,7 @@ describe('Packet Corruption & Recovery', () => {
 
 describe('Extreme Edge Cases', () => {
 
-  test('should handle zero-length packets', async () => {
+  it('should handle zero-length packets', async () => {
     const processor = new DualStreamProcessor();
     
     const packet: Packet = {
@@ -706,11 +710,11 @@ describe('Extreme Edge Cases', () => {
       }
     };
     
-    await expect(processor.ingestPacket(packet)).resolves.not.toThrow();
+    await processor.ingestPacket(packet);
     processor.dispose();
   });
 
-  test('should handle maximum timestamp values', () => {
+  it('should handle maximum timestamp values', () => {
     const sync = new StreamSynchronizer();
     const maxTimestamp = BigInt(2) ** BigInt(63) - BigInt(1);
     
@@ -718,10 +722,10 @@ describe('Extreme Edge Cases', () => {
     sync.addAIEvent(maxTimestamp - BigInt(1000), { type: 'test' });
     
     const overlap = sync.detectOverlap(100);
-    expect(overlap).toBeDefined();
+    expect(overlap).to.not.be.undefined;
   });
 
-  test('should handle rapid stream switching', async () => {
+  it('should handle rapid stream switching', async () => {
     const processor = new DualStreamProcessor();
     const switches = 1000;
     
@@ -740,7 +744,7 @@ describe('Extreme Edge Cases', () => {
     }
     
     const stats = processor.getStatistics();
-    expect(stats.userPacketsProcessed + stats.aiPacketsProcessed).toBeGreaterThan(0);
+    expect(stats.userPacketsProcessed + stats.aiPacketsProcessed).to.be.greaterThan(0);
     
     processor.dispose();
   });

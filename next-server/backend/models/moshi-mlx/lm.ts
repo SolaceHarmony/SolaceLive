@@ -107,6 +107,7 @@ export class LmModel {
   }
 
   async init(weights?: Map<string, any>) {
+    this.weightsLoaded = false;
     await this.text_emb.init(weights?.get('text_emb.weight'));
 
     for (let i = 0; i < this.audio_emb.length; i++) {
@@ -207,8 +208,15 @@ export class LmModel {
         }
       }
     }
-    if (weights && (this.text_out_head || this.audio_out_heads.length > 0)) {
-      this.weightsLoaded = true;
+    if (weights) {
+      const haveText = Boolean(this.text_out_head);
+      const expectedAudioHeads = this.config.audio_codebooks;
+      const haveAudio = expectedAudioHeads === 0 ? true : this.audio_out_heads.length === expectedAudioHeads;
+      const haveLayers = this.transformerLayerParamsCount.length === this.config.transformer.num_layers
+        && this.transformerLayerParamsCount.every((count) => count > 0);
+      if (haveText && haveAudio && haveLayers) {
+        this.weightsLoaded = true;
+      }
     }
   }
 
@@ -286,7 +294,7 @@ export class LmModel {
     }
     this.sharedCache = new Map<string, any>();
     this.sharedCache.set('transformer', transformerCache);
-    this.sharedCache.set('audio_delay_steps', new Map<number, number>());
+    this.sharedCache.set('audio_delay_queue', new Map<number, mx.array[]>());
     this.cachesInitialized = true;
     this.ensureCausalMask(this.maxSeqLen);
   }
@@ -300,7 +308,7 @@ export class LmModel {
         layerCache.delete('values');
       }
     }
-    this.sharedCache.set('audio_delay_steps', new Map<number, number>());
+    this.sharedCache.set('audio_delay_queue', new Map<number, mx.array[]>());
   }
 
   getSharedCache(): Map<string, any> | null {
@@ -405,33 +413,43 @@ export class LmModel {
    * TODO: Implement masking/shift when caches are in place; for now, returns tokens unchanged.
    */
   private applyAudioDelays(audio_tokens: mx.array[], cache?: Map<string, any>): mx.array[] {
-    // Minimal, cache-aware delay: for each codebook i with delay d>0, suppress early tokens
-    // by substituting a zero token until d steps have elapsed for that codebook.
-    // This preserves shapes [B,1] and begins aligning audio vs text without full sequence caches.
     const delays = this.config.audio_delays || [];
     if (!delays.length) return audio_tokens;
 
     // Keep simple counters in cache under 'audio_delay_steps'
     const targetCache = this.ensureSharedCache(cache);
-    let delayState = targetCache.get('audio_delay_steps') as Map<number, number> | undefined;
-    if (!delayState) {
-      delayState = new Map<number, number>();
-      targetCache.set('audio_delay_steps', delayState);
+    let queueState = targetCache.get('audio_delay_queue') as Map<number, mx.array[]> | undefined;
+    if (!queueState) {
+      queueState = new Map<number, mx.array[]>();
+      targetCache.set('audio_delay_queue', queueState);
     }
 
     const out: mx.array[] = [];
     for (let i = 0; i < audio_tokens.length; i++) {
       const tok = audio_tokens[i]; // [B,1]
       const d = delays[i] ?? 0;
-      const seen = delayState.get(i) ?? 0;
-      // Increment seen count each step
-      delayState.set(i, seen + 1);
-      if (d > 0 && seen < d) {
-        // Substitute zero token id during delay period
-        const zeroTok = mx.array([[0]], 'int32');
-        out.push(zeroTok);
-      } else {
+      if (d <= 0) {
         out.push(tok);
+        continue;
+      }
+
+      let queue = queueState.get(i);
+      if (!queue) {
+        queue = [];
+        queueState.set(i, queue);
+      }
+      queue.push(tok);
+      if (queue.length > d) {
+        const emit = queue.shift();
+        if (!emit) {
+          const shape = (tok as any).shape as number[];
+          out.push(mx.zeros(shape, 'int32'));
+        } else {
+          out.push(emit);
+        }
+      } else {
+        const shape = (tok as any).shape as number[];
+        out.push(mx.zeros(shape, 'int32'));
       }
     }
     return out;
