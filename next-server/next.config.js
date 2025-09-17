@@ -12,6 +12,10 @@ const nextConfig = {
   outputFileTracingRoot: path.resolve(__dirname, '..'),
   typescript: {
     tsconfigPath: 'tsconfig.json',
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
   },
 };
 

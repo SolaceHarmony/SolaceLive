@@ -65,6 +65,12 @@ export class LmModel {
   private audio_out_heads: mx.array[] = [];
   private weightsLoaded = false;
   private transformerLayerParamsCount: number[] = [];
+  private sharedCache: Map<string, any> | null = null;
+  private cachedMask: mx.array | null = null;
+  private cachedMaskSize = 0;
+  private cachedBatchSize = 0;
+  private maxSeqLen: number;
+  private cachesInitialized = false;
 
   constructor(config: LmConfig) {
     this.config = config;
@@ -88,6 +94,15 @@ export class LmModel {
 
     if (config.depformer) {
       this.depformer = new Transformer(config.depformer.transformer);
+    }
+
+    this.maxSeqLen = Math.max(
+      config.transformer.max_seq_len ?? 0,
+      config.transformer.context ?? 0,
+      1,
+    );
+    if (!isFinite(this.maxSeqLen) || this.maxSeqLen <= 0) {
+      this.maxSeqLen = 2048;
     }
   }
 
@@ -228,14 +243,68 @@ export class LmModel {
   private createCausalMask(seq_len: number): mx.array {
     const mask = mx.zeros([seq_len, seq_len]);
     const indices = mx.arange(seq_len);
-    
+
     for (let i = 0; i < seq_len; i++) {
       for (let j = i + 1; j < seq_len; j++) {
         mask.index_put_([i, j], mx.array(-1e9));
       }
     }
-    
+
     return mask;
+  }
+
+  private ensureCausalMask(size: number): void {
+    if (size <= this.cachedMaskSize && this.cachedMask) {
+      return;
+    }
+    const target = Math.max(size, this.cachedMaskSize || 0, this.maxSeqLen);
+    this.cachedMask = this.createCausalMask(target);
+    this.cachedMaskSize = target;
+  }
+
+  private sliceCausalMask(length: number): mx.array | undefined {
+    if (!this.config.transformer.causal) return undefined;
+    this.ensureCausalMask(length);
+    if (!this.cachedMask) return undefined;
+    if (this.cachedMaskSize === length) return this.cachedMask;
+    return (this.cachedMask as any).slice([[0, length], [0, length]]);
+  }
+
+  private ensureSharedCache(cache?: Map<string, any>): Map<string, any> {
+    if (cache) return cache;
+    if (!this.sharedCache) {
+      this.setupCaches(this.cachedBatchSize || 1);
+    }
+    return this.sharedCache!;
+  }
+
+  setupCaches(maxBatchSize = 1): void {
+    this.cachedBatchSize = Math.max(1, maxBatchSize);
+    const transformerCache = new Map<number, Map<string, mx.array>>();
+    for (let i = 0; i < this.config.transformer.num_layers; i++) {
+      transformerCache.set(i, new Map());
+    }
+    this.sharedCache = new Map<string, any>();
+    this.sharedCache.set('transformer', transformerCache);
+    this.sharedCache.set('audio_delay_steps', new Map<number, number>());
+    this.cachesInitialized = true;
+    this.ensureCausalMask(this.maxSeqLen);
+  }
+
+  resetCaches(): void {
+    if (!this.sharedCache) return;
+    const transformer = this.sharedCache.get('transformer') as Map<number, Map<string, mx.array>> | undefined;
+    if (transformer) {
+      for (const layerCache of transformer.values()) {
+        layerCache.delete('keys');
+        layerCache.delete('values');
+      }
+    }
+    this.sharedCache.set('audio_delay_steps', new Map<number, number>());
+  }
+
+  getSharedCache(): Map<string, any> | null {
+    return this.sharedCache;
   }
 
   forward(
@@ -252,7 +321,7 @@ export class LmModel {
     for (let i = 0; i < audio_codes.length && i < this.audio_emb.length; i++) {
       const audio_emb = this.audio_emb[i].forward(audio_codes[i]);
       const delay = this.config.audio_delays[i] || 0;
-      
+
       if (delay > 0) {
         const padding = mx.zeros([B, delay, h.shape[2]]);
         const shifted = mx.concatenate([padding, audio_emb], 1);
@@ -262,9 +331,10 @@ export class LmModel {
       }
     }
 
-    const mask = this.config.transformer.causal ? this.createCausalMask(T) : undefined;
-    const transformer_cache = cache?.get('transformer') as Map<number, Map<string, mx.array>> | undefined;
-    
+    const mask = this.sliceCausalMask(T);
+    const effectiveCache = this.ensureSharedCache(cache);
+    const transformer_cache = effectiveCache.get('transformer') as Map<number, Map<string, mx.array>> | undefined;
+
     h = this.transformer.forward(h, mask, transformer_cache);
 
     const text_logits = this.text_out_head ? mx.matmul(h, mx.transpose(this.text_out_head)) : mx.zeros([B, T, this.config.text_out_vocab_size]);
@@ -342,10 +412,11 @@ export class LmModel {
     if (!delays.length) return audio_tokens;
 
     // Keep simple counters in cache under 'audio_delay_steps'
-    let delayState = cache?.get('audio_delay_steps') as Map<number, number> | undefined;
+    const targetCache = this.ensureSharedCache(cache);
+    let delayState = targetCache.get('audio_delay_steps') as Map<number, number> | undefined;
     if (!delayState) {
       delayState = new Map<number, number>();
-      if (cache) cache.set('audio_delay_steps', delayState);
+      targetCache.set('audio_delay_steps', delayState);
     }
 
     const out: mx.array[] = [];
