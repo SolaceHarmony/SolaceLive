@@ -1,17 +1,17 @@
 # Repository TODO Checklist
 
 ## Root / Misc
-- [ ] .idx/dev.nix — confirm still needed for local env; document or archive.
+- [x] .idx/dev.nix — contains Node 20 + IDX preview config; keep for IDX users and document in repo setup notes.
 
 ## Frontend Workspace (`frontend/`)
-- [ ] frontend/README.md — expand roadmap & link to active owners.
-- [ ] frontend/whisperx/README.md — add regression/test instructions.
-- [ ] frontend/mimi-packet/README.md — turn TODO bullets into actionable tasks.
-- [ ] frontend/pages/README.md — keep activation instructions current.
-- [ ] frontend/pages/pages/index.jsx — adapt to backend changes before restoring to Next.js.
-- [ ] frontend/pages/pages/moshi.tsx — same as above.
-- [ ] frontend/pages/pages/moshi-mlx.jsx — same as above.
-- [ ] frontend/pages/pages/packet-voice.tsx — rebuild around refreshed packet UI.
+- [x] frontend/README.md — roadmap table + owners placeholder added.
+- [x] frontend/whisperx/README.md — regression checklist documented.
+- [x] frontend/mimi-packet/README.md — milestones broken into actionable tasks.
+- [x] frontend/pages/README.md — activation checklist documented.
+- [x] frontend/pages/pages/index.jsx — now surfaces backend status & reintegration checklist.
+- [x] frontend/pages/pages/moshi.tsx — now documents new packet server checklist.
+- [x] frontend/pages/pages/moshi-mlx.jsx — now documents action items for new packet/MLX API.
+- [x] frontend/pages/pages/packet-voice.tsx — placeholder now outlines rebuild checklist.
 - [ ] frontend/pages/pages/whisperx.tsx — reinstate once WebGPU fast-whisper passes tests.
 
 ## Docs (`/docs`)
@@ -23,10 +23,10 @@
 - [ ] models/gemma3-12b-csm-3.gguf — confirm checksum/version & storage strategy.
 
 ## `next-server` Config & Tooling
-- [ ] next-server/package.json — audit dependencies post-frontend split.
+- [x] next-server/package.json — reviewed runtime deps; moved `eslint-plugin-react` to dev.
 - [ ] next-server/tsconfig.json & tsconfig.gguf.json — document separate roles.
-- [ ] next-server/next.config.js / next.config.cjs — consolidate; revisit ignoreBuildErrors.
-- [ ] next-server/.eslintrc.* — collapse into single config.
+- [ ] next-server/next.config.js — remove ignoreBuildErrors/ignoreDuringBuilds once frontend reinstated (next.config.cjs removed).
+- [x] next-server/.eslintrc.* — removed legacy configs; flat `eslint.config.js` is now sole source.
 - [ ] next-server/dist/** — confirm usage; regenerate from scripts if needed.
 
 ## Experiments (`next-server/experiments/neuromorphic/**`)
@@ -65,4 +65,3 @@
 
 ## Editor/IDE Files
 - [ ] Audit .vscode/ and .idea/ configs; keep repo-specific instructions only.
-

@@ -14,10 +14,21 @@ export default function WhisperXPage() {
         remove unused dependencies. This route now serves as a placeholder so documentation links stay valid and the
         Next.js build remains clean.
       </p>
-      <p style={{ marginTop: 16, color: '#666' }}>
-        Watch <code>docs/PLAN.md</code> for updates on the revived web demo. In the meantime you can exercise the
-        packet server via REST/WebSocket interfaces or run WhisperX locally with the provided CLI tools.
-      </p>
+      <section style={{ marginTop: 24 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600 }}>Bring-Back Checklist</h2>
+        <ol style={{ lineHeight: 1.8 }}>
+          <li>Run the regression steps in <code>frontend/whisperx/README.md</code> (WebGPU on/off, WASM fallback).</li>
+          <li>Ensure <code>public/coi-serviceworker.js</code> registers and <code>HF_TOKEN</code> proxying works.</li>
+          <li>Prefetch models via <code>prefetchWhisper</code> / <code>prefetchAlignment</code>; record timings.</li>
+          <li>Only then copy this page into <code>next-server/pages/whisperx.tsx</code>.</li>
+        </ol>
+      </section>
+      <section style={{ marginTop: 24, color: '#666', lineHeight: 1.8 }}>
+        <p>
+          While the browser demo is paused you can still exercise transcription using the backend packet server or run
+          the CLI tooling documented in <code>docs/PLAN.md</code>.
+        </p>
+      </section>
     </main>
   );
 }

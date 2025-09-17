@@ -1,78 +1,46 @@
-"use client";
-import React from 'react';
-
-// Use the unified Packet voice interface directly from the library
-import { PacketStreamingVoiceInterface } from "../lib/unified/components/PacketStreamingVoiceInterface";
-
 export default function PacketVoicePage() {
-  const [packetHealth, setPacketHealth] = React.useState<string>('');
-  const [metrics, setMetrics] = React.useState<any>(null);
-  const [weightsInfo, setWeightsInfo] = React.useState<any>(null);
   return (
-    <main style={{ padding: 24, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif' }}>
-      <h1>Packet Streaming Voice (Next.js + WebSocket)</h1>
-      <p style={{ color: '#666' }}>
-        Starts a microphone capture loop and streams 80ms Float32 frames (24kHz) to the packet server.
-        Receives streaming text and audio chunks in response.
+    <main
+      style={{
+        padding: 24,
+        fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif',
+        maxWidth: 820,
+        margin: '48px auto',
+      }}
+    >
+      <h1 style={{ fontSize: 28, fontWeight: 700 }}>Packet Streaming Voice (To Rebuild)</h1>
+      <p style={{ color: '#555', lineHeight: 1.6 }}>
+        The original packet voice page depended on browser services that no longer exist (speechService,
+        voiceActivityDetection, whisperWasmService). Re-implement the UI atop the new MLX backend using this checklist.
       </p>
-      <div style={{ marginTop: 16 }}>
-        <PacketStreamingVoiceInterface />
-      </div>
-      <div style={{ marginTop: 16, color: '#666' }}>
-        <div>Configure server URL: <code>NEXT_PUBLIC_PACKET_WS</code> (defaults to ws://&lt;host&gt;:8788)</div>
-        <div>LM Studio base: <code>NEXT_PUBLIC_LM_STUDIO_URL</code> (defaults to http://localhost:1234/v1)</div>
-        <div style={{ marginTop: 8, padding: 12, border: '1px solid #ddd', borderRadius: 6, background: '#fafafa' }}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>Browser WhisperX model prefetch</div>
-          <div>
-            To route Hugging Face model downloads through this server (and use server-side <code>HF_TOKEN</code>), set
-            <code> NEXT_PUBLIC_HF_MIRROR=/api/hf</code> in your client env. See
-            <code> next-server/lib/unified/docs/hf-proxy-mirror.md</code> for details.
-          </div>
-        </div>
-        <div style={{ marginTop: 8, padding: 12, border: '1px solid #ddd', borderRadius: 6, background: '#fafafa' }}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>Packet server health</div>
-          <button
-            onClick={async () => {
-              setPacketHealth('Checking...');
-              try {
-                const r = await fetch('/api/test/packet-health');
-                const j = await r.json();
-                setPacketHealth(j.ok ? `OK (${j.status}) clients=${j.data?.clients ?? 'n/a'}` : `Failed (${j.status || 'n/a'})`);
-                setMetrics(j.data?.metrics || null);
-              } catch (e) {
-                setPacketHealth(`Error: ${e instanceof Error ? e.message : String(e)}`);
-              }
-            }}
-          >Check Packet Server</button>
-          {packetHealth && <div style={{ marginTop: 6, color: '#444' }}>{packetHealth}</div>}
-          {metrics && (
-            <div style={{ marginTop: 6, color: '#444' }}>
-              <div><b>Readiness:</b> lm={metrics.__lm ? 'ready' : 'not-ready'} mimi={metrics.__mimi ? 'ready' : 'not-ready'}</div>
-              <div><b>Step:</b> count={metrics.step.count} avg={metrics.step.avgMs.toFixed(1)}ms last={metrics.step.lastMs}ms overBudget={metrics.step.overBudget}/{metrics.step.count} (budget {metrics.step.budgetMs}ms)</div>
-              <div><b>Encode:</b> count={metrics.encode.count} avg={metrics.encode.avgMs.toFixed(1)}ms last={metrics.encode.lastMs}ms</div>
-              <div><b>Decode:</b> count={metrics.decode.count} avg={metrics.decode.avgMs.toFixed(1)}ms last={metrics.decode.lastMs}ms</div>
-            </div>
-          )}
-          <div style={{ marginTop: 8 }}>
-            <button
-              onClick={async () => {
-                try {
-                  const r = await fetch('/api/test/weights');
-                  const j = await r.json();
-                  setWeightsInfo(j.data || null);
-                } catch (e) {
-                  setWeightsInfo({ error: e instanceof Error ? e.message : String(e) });
-                }
-              }}
-            >Inspect Weights</button>
-            {weightsInfo && (
-              <pre style={{ marginTop: 6, maxWidth: 680, overflowX: 'auto', background: '#f6f8fa', padding: 8, borderRadius: 4 }}>
-                {JSON.stringify(weightsInfo, null, 2)}
-              </pre>
-            )}
-          </div>
-        </div>
-      </div>
+
+      <section style={{ marginTop: 24 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600 }}>UI TODO</h2>
+        <ol style={{ lineHeight: 1.8 }}>
+          <li>Capture microphone audio at 24 kHz, buffer into 80 ms frames.</li>
+          <li>Send frames via <code>packetStreamingService</code> (critical priority) and render downstream PCM with jitter buffering.</li>
+          <li>Display partial/final text tokens and expose `/health` metrics in a developer panel.</li>
+          <li>Gate WhisperX integration behind readiness checks; link to the fast-whisper regression plan.</li>
+        </ol>
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600 }}>Backend Hooks</h2>
+        <ul style={{ lineHeight: 1.8 }}>
+          <li><code>NEXT_PUBLIC_PACKET_WS</code> — default <code>ws://localhost:8788</code>.</li>
+          <li><code>/api/test/packet-health</code> — use for live status & metrics.</li>
+          <li><code>/api/test/weights</code> — verify LM/Mimi readiness.</li>
+        </ul>
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600 }}>Reference Implementation Notes</h2>
+        <ul style={{ lineHeight: 1.8 }}>
+          <li><code>lib/unified/services/packetStreamingService.ts</code> — orchestrates WS connection.</li>
+          <li><code>lib/unified/utils/audioPlayer.ts</code> — jitter-buffer playback helper.</li>
+          <li><code>docs/ARCHITECTURE.md</code> — cadence, packet priority, backpressure policies.</li>
+        </ul>
+      </section>
     </main>
   );
 }
