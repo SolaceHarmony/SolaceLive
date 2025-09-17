@@ -5,7 +5,7 @@
 
 **What We’re Building**
 - Upstream PCM (24 kHz, 80 ms) → Mimi encode → Moshi LM step → Mimi decode → Downstream PCM.
-- Browser WhisperX (Faster‑Whisper semantics) for optional on‑device partial transcripts.
+- Browser WhisperX (Faster‑Whisper semantics) for mandatory on-device transcription; this offloads ASR from the Moshi backend so packet generation scales.
 - Packet protocol with priority, acks, heartbeats, and backpressure.
 
 **Architecture Summary (canonical paths)**
@@ -26,7 +26,7 @@
 
 **Workstreams**
 - Realtime engine: strict 80 ms step loop (encode → step → decode) with caches, no placeholders.
-- WhisperX (browser): model prefetch, WebGPU/wasm fallback, optional `TEXT_PARTIAL` streaming.
+- WhisperX (browser): model prefetch, WebGPU/wasm fallback, `TEXT_PARTIAL` streaming is required when available (gate by readiness, not by feature flag).
 - Infra: HF proxy, smoke tests, health endpoints, mirror support (`NEXT_PUBLIC_HF_MIRROR=/api/hf`).
 - Observability: health checks now; step latency/queue/token‑rate metrics next.
 
@@ -74,7 +74,8 @@ Implementation Notes
 - Safetensors mapping: Group tensors by layer/param (q/k/v/o, w1/2/3, norms). Reject partial loads.
 - Mimi: Keep codec server‑side initially; expose explicit "not ready" errors (no simulation).
 - Strict 80 ms loop: One LM step per audio frame; sequentially process bursts; never buffer partial frames server‑side.
-- WhisperX: No fallbacks—UI must surface readiness/token/mirror requirements.
+- WhisperX: No server-side fallbacks—UI must surface readiness/token/mirror requirements.
+- Fast-whisper TypeScript port: Keep the WebGPU/WebAssembly pipeline active; if the browser ASR regresses, packet voice scale suffers. No archiving or stubbing of `lib/unified/audio/whisperx/**`.
 
 Risk Management
 - Model sizes: Keep Mimi on server; use browser only for ASR (smaller models). Use `/api/hf` mirror and IndexedDB cache.

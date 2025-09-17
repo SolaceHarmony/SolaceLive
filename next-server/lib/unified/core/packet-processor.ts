@@ -658,14 +658,4 @@ export class StreamSynchronizer {
   }
 }
 
-// ============================================================================
-// EXPORTS
-// ============================================================================
-
-export {
-  PriorityQueue,
-  JitterBuffer,
-  PacketStreamManager,
-  DualStreamProcessor,
-  StreamSynchronizer
-};
+// Classes are exported individually above; no additional exports required.

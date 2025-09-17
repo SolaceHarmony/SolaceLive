@@ -1,9 +1,9 @@
 # SolaceLive Architecture (Aligned with Current Code)
 
-This document reflects the current, focused design: Next.js UI + packetized WebSocket server with MLX-based Moshi/Mimi, and a browser WhisperX demo. It is the canonical contract to prevent drift.
+This document reflects the current, focused design: Next.js UI + packetized WebSocket server with MLX-based Moshi/Mimi, and the in-browser WhisperX stack that is required for transcription latency and concurrency targets. It is the canonical contract to prevent drift.
 
 ## System Overview
-- **App**: Next.js (React 19) UI in `next-server/` with packet voice and browser WhisperX pages.
+- **App**: Next.js (React 19) UI in `next-server/` with packet voice and browser WhisperX pages. WhisperX is not an optional demo; the WebGPU/WebAssembly fast-whisper port lives in the client so that large numbers of concurrent connections can stream ASR locally while the Moshi/Mimi backend focuses on generation.
 - **Realtime server**: Packetized WebSocket server (TypeScript + MLX) in `next-server/lib/unified/server/server.ts`.
 - **Core libs**: Unified library under `next-server/lib/unified/` (WebSocket, models, audio, services).
 - **Models**: Moshi (LM) + Mimi (codec) in `next-server/lib/unified/models/moshi-mlx/`.
@@ -74,11 +74,11 @@ Mic → 24kHz frames (1920) ──AUDIO_CHUNK──▶ Buffer (80ms aligned)
 - **Mimi**: `Mimi.streaming()`, `encode()`, `decode()` enforce protocol; require real weights.
 
 ## Browser WhisperX (Faster-Whisper)
-- **What**: In-browser ASR path using WhisperX/Faster-Whisper semantics for low-latency, privacy-preserving transcription.
+- **What**: In-browser ASR path using WhisperX/Faster-Whisper semantics for low-latency, privacy-preserving transcription. This TypeScript/WebGPU port is part of the critical path; it must ship alongside the packet voice experience to keep backend Moshi capacity dedicated to audio generation.
 - **Components**: `lib/unified/audio/whisperx/*` (engine, VAD, alignment, diarization) and `lib/unified/components/WhisperXDemo.tsx`.
 - **Page**: `/whisperx` (COI SW auto-reg via `public/coi-serviceworker.js`).
 - **Auth**: `NEXT_PUBLIC_HF_TOKEN` (browser) for gated HF model downloads when required.
-- **Providers**: Uses browser-compatible backends (e.g., Transformers.js/Xenova or wasm-backed transcribers) configured inside the WhisperX engine.
+- **Providers**: Uses browser-compatible backends (e.g., Transformers.js/Xenova or wasm-backed transcribers) configured inside the WhisperX engine. The fast-whisper port lives here; do not move it server-side unless we can prove the backend can absorb the load for thousands of parallel streams.
 - **Why**:
   - Privacy-first: audio stays on-device (no upstream audio).
   - Perceptual latency: faster local partials before server round-trips.
