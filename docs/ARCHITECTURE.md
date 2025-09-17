@@ -4,10 +4,10 @@ This document reflects the current, focused design: Next.js UI + packetized WebS
 
 ## System Overview
 - **App**: Next.js (React 19) UI in `next-server/` with packet voice and browser WhisperX pages. WhisperX is not an optional demo; the WebGPU/WebAssembly fast-whisper port lives in the client so that large numbers of concurrent connections can stream ASR locally while the Moshi/Mimi backend focuses on generation.
-- **Realtime server**: Packetized WebSocket server (TypeScript + MLX) in `next-server/lib/unified/server/server.ts`.
-- **Core libs**: Unified library under `next-server/lib/unified/` (WebSocket, models, audio, services).
-- **Models**: Moshi (LM) + Mimi (codec) in `next-server/lib/unified/models/moshi-mlx/`.
-- **Configuration**: Model configs in `next-server/lib/unified/configs/` (e.g., `moshi_mlx_2b.json`).
+- **Realtime server**: Packetized WebSocket server (TypeScript + MLX) in `next-server/backend/server/server.ts`.
+- **Core libs**: Backend library under `next-server/backend/` (WebSocket, models, utilities).
+- **Models**: Moshi (LM) + Mimi (codec) in `next-server/backend/models/moshi-mlx/`.
+- **Configuration**: Model configs in `next-server/backend/configs/` (e.g., `moshi_mlx_2b.json`).
 
 ## Runtime Targets
 - **Audio cadence**: 24 kHz PCM; strict 12.5 Hz steps (80 ms), 1920 samples per step.
@@ -19,16 +19,16 @@ This document reflects the current, focused design: Next.js UI + packetized WebS
   - `next-server/pages/packet-voice.tsx`: Real-time mic capture (24 kHz, 80 ms), packet WS streaming, audio playback, text partials.
   - `next-server/pages/whisperx.tsx`: Browser WhisperX demo; auto register `public/coi-serviceworker.js`.
 - **Client Libraries**
-  - `lib/unified/core/websocket-client.ts`: `PacketWebSocket`, `SolaceLivePacketClient` (priority queues, acks, heartbeat).
-  - `lib/unified/services/packetStreamingService.ts`: Bridges UI to packet server.
-  - `lib/unified/utils/audioFrames.ts`: `AudioFrameCapturer` (24 kHz, 1920 samples per frame).
+  - `backend/core/websocket-client.ts`: `PacketWebSocket`, `SolaceLivePacketClient` (priority queues, acks, heartbeat).
+  - `backend/services/packetStreamingService.ts`: Bridges UI to packet server.
+  - `backend/utils/audioFrames.ts`: `AudioFrameCapturer` (24 kHz, 1920 samples per frame).
 - **Server**
-  - `lib/unified/server/server.ts`: Packet WS server (TypeScript, MLX). Per-step LM generation (audio-first), Mimi encode/decode hooks.
+  - `backend/server/server.ts`: Packet WS server (TypeScript, MLX). Per-step LM generation (audio-first), Mimi encode/decode hooks.
 - **Models (MLX TS)**
-  - `lib/unified/models/moshi-mlx/transformer.ts`: Transformer stack (RMSNorm, MHA, FFN).
-  - `lib/unified/models/moshi-mlx/lm.ts`: `LmModel` with `forward()`, `generate()`, `step()`; weights enforced.
-  - `lib/unified/models/moshi-mlx/mimi.ts`: `Mimi` streaming API enforcing protocol (24 kHz/12.5 Hz); weights enforced.
-  - `lib/unified/models/moshi-mlx/tokenizer.ts`: Interface stub only (audio-first design – no tokenizer bound).
+  - `backend/models/moshi-mlx/transformer.ts`: Transformer stack (RMSNorm, MHA, FFN).
+  - `backend/models/moshi-mlx/lm.ts`: `LmModel` with `forward()`, `generate()`, `step()`; weights enforced.
+  - `backend/models/moshi-mlx/mimi.ts`: `Mimi` streaming API enforcing protocol (24 kHz/12.5 Hz); weights enforced.
+  - `backend/models/moshi-mlx/tokenizer.ts`: Interface stub only (audio-first design – no tokenizer bound).
 
 ## Data Flows
 
@@ -66,7 +66,7 @@ Mic → 24kHz frames (1920) ──AUDIO_CHUNK──▶ Buffer (80ms aligned)
 ```
 
 ## Model Integration (Config-Driven)
-- **Config**: `lib/unified/configs/moshi_mlx_2b.json`
+- **Config**: `backend/configs/moshi_mlx_2b.json`
   - `n_q`: number of audio codebooks (RVQ levels)
   - `card`: audio vocab size; `text_card`, `existing_text_padding_id` (text pad only by default)
   - `delays`: per-codebook acoustic delay (to be applied in LM step)
@@ -75,7 +75,7 @@ Mic → 24kHz frames (1920) ──AUDIO_CHUNK──▶ Buffer (80ms aligned)
 
 ## Browser WhisperX (Faster-Whisper)
 - **What**: In-browser ASR path using WhisperX/Faster-Whisper semantics for low-latency, privacy-preserving transcription. This TypeScript/WebGPU port is part of the critical path; it must ship alongside the packet voice experience to keep backend Moshi capacity dedicated to audio generation.
-- **Components**: `lib/unified/audio/whisperx/*` (engine, VAD, alignment, diarization) and `lib/unified/components/WhisperXDemo.tsx`.
+- **Components**: `frontend/whisperx/src/*` (engine, VAD, alignment, diarization) and staged Next frontend for `/whisperx`.
 - **Page**: `/whisperx` (COI SW auto-reg via `public/coi-serviceworker.js`).
 - **Auth**: `NEXT_PUBLIC_HF_TOKEN` (browser) for gated HF model downloads when required.
 - **Providers**: Uses browser-compatible backends (e.g., Transformers.js/Xenova or wasm-backed transcribers) configured inside the WhisperX engine. The fast-whisper port lives here; do not move it server-side unless we can prove the backend can absorb the load for thousands of parallel streams.
@@ -87,11 +87,11 @@ Mic → 24kHz frames (1920) ──AUDIO_CHUNK──▶ Buffer (80ms aligned)
   - Default packet loop is audio-first. When WhisperX is enabled, the UI may send partial text (`TEXT_PARTIAL`) to improve perceived responsiveness while still streaming audio for LM/Mimi generation.
 
 ### Lightweight Model Loading (Browser)
-- **Loader**: `lib/unified/audio/whisperx/utils/modelPrefetch.ts`
+- **Loader**: `frontend/whisperx/src/utils/modelPrefetch.ts`
   - `prefetchWhisper(model, device)`: warms Transformers.js pipeline and caches weights in IndexedDB.
   - `detectDevice()`: selects `webgpu` when available or falls back to wasm/CPU.
   - `prefetchAlignment()`: preloads alignment models (e.g., wav2vec2) for WhisperX.
-- **Token/Access**: `lib/unified/audio/whisperx/utils/hfAuth.ts` applies `NEXT_PUBLIC_HF_TOKEN`/localStorage for gated repos.
+- **Token/Access**: `frontend/whisperx/src/utils/hfAuth.ts` applies `NEXT_PUBLIC_HF_TOKEN`/localStorage for gated repos.
 - **Backend Mirror (optional)**: Set `NEXT_PUBLIC_HF_MIRROR=https://host/api/hf` to route model assets via a local proxy (improves reliability/rate limits, centralizes auth). The prefetch code supports both Vite (`VITE_HF_MIRROR`) and Next (`NEXT_PUBLIC_HF_MIRROR`).
 
 ## Configuration / Env
@@ -125,7 +125,7 @@ npm run dev             # http://localhost:3000
 
 ## Anti-Drift Practices
 - Contracts-first: this document is canonical for step API, packet types, cadence
-- Single source: model config (`lib/unified/configs/`) is authoritative (n_q, delays, ids)
+- Single source: model config (`backend/configs/`) is authoritative (n_q, delays, ids)
 - Build scope: `next-server/tsconfig.json` excludes references/experiments; only unified libs compile
 - No sim: encode/step/decode throw without real weights; avoids silent drift
 

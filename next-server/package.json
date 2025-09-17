@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
-    "packet:server": "tsx lib/unified/server/server.ts",
+    "packet:server": "tsx backend/server/server.ts",
     "smoke": "node scripts/smoke-test.mjs",
     "test:gguf": "tsx scripts/test-gguf.mjs",
     "llama:dry": "tsx scripts/llama-dry-run.mjs",

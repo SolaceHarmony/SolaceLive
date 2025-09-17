@@ -195,7 +195,7 @@ export class PacketWebSocketServer {
     });
 
     // Initialize MLX-backed components synchronously on startup
-    const cfgPath = path.join(process.cwd(), 'lib/unified/configs/moshi_mlx_2b.json');
+    const cfgPath = path.join(process.cwd(), 'backend/configs/moshi_mlx_2b.json');
     const raw = fs.readFileSync(cfgPath, 'utf-8');
     const cfgDict = JSON.parse(raw);
     // Default LM config from moshi file; may be overridden by GGUF path
@@ -690,7 +690,7 @@ export class MlxTransformerEngine implements TransformerEngine {
  */
 export async function createMlxEngineFromEnv(): Promise<MlxTransformerEngine> {
   // Load base config
-  const cfgPath = path.join(process.cwd(), 'lib/unified/configs/moshi_mlx_2b.json');
+  const cfgPath = path.join(process.cwd(), 'backend/configs/moshi_mlx_2b.json');
   const raw = fs.readFileSync(cfgPath, 'utf-8');
   const cfgDict = JSON.parse(raw);
   let lmCfg = createLmConfigFromDict(cfgDict);

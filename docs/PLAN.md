@@ -10,11 +10,11 @@
 
 **Architecture Summary (canonical paths)**
 - UI (Next.js): `next-server/pages/{packet-voice,whisperx}.tsx`
-- Packet server (TypeScript + MLX): `next-server/lib/unified/server/server.ts`
-- Models (MLX TS): `next-server/lib/unified/models/moshi-mlx/{mimi.ts,lm.ts,transformer.ts}`
-- Config: `next-server/lib/unified/configs/moshi_mlx_2b.json`
-- WS client: `next-server/lib/unified/core/websocket-client.ts`
-- Frame capture: `next-server/lib/unified/utils/audioFrames.ts`
+- Packet server (TypeScript + MLX): `next-server/backend/server/server.ts`
+- Models (MLX TS): `next-server/backend/models/moshi-mlx/{mimi.ts,lm.ts,transformer.ts}`
+- Config: `next-server/backend/configs/moshi_mlx_2b.json`
+- WS client: `next-server/backend/core/websocket-client.ts`
+- Frame capture: `next-server/backend/utils/audioFrames.ts`
 - HF proxy: `next-server/pages/api/hf/[...path].ts` (server `HF_TOKEN`)
 
 **Protocol Contracts**
@@ -75,7 +75,7 @@ Implementation Notes
 - Mimi: Keep codec server‑side initially; expose explicit "not ready" errors (no simulation).
 - Strict 80 ms loop: One LM step per audio frame; sequentially process bursts; never buffer partial frames server‑side.
 - WhisperX: No server-side fallbacks—UI must surface readiness/token/mirror requirements.
-- Fast-whisper TypeScript port: Keep the WebGPU/WebAssembly pipeline active; if the browser ASR regresses, packet voice scale suffers. No archiving or stubbing of `lib/unified/audio/whisperx/**`.
+- Fast-whisper TypeScript port: Keep the WebGPU/WebAssembly pipeline active; if the browser ASR regresses, packet voice scale suffers. No archiving or stubbing of `frontend/whisperx/src/**`.
 
 Risk Management
 - Model sizes: Keep Mimi on server; use browser only for ASR (smaller models). Use `/api/hf` mirror and IndexedDB cache.
@@ -86,8 +86,8 @@ Docs & Testing
 - Weights & Delays page: Document fetch, shape validation, and application with CLI examples.
 - Extend smoke: After weights, assert non‑zero step counts and decode timings in `/health` and one downstream audio frame.
 
-**Archive / Experiments Candidates (lib/unified)**
-These are useful references but not in the critical path of the current packetized stack. Keep under `lib/unified/experiments` or `lib/unified/archive` for clarity.
+**Archive / Experiments Candidates (backend)**
+These are useful references but not in the critical path of the current packetized stack. Keep under `archive/experiments` or `archive/unified` for clarity.
 
 - components/
   - `StreamingVoiceInterface.tsx` (legacy UI superseded by `PacketStreamingVoiceInterface.tsx`)
@@ -131,9 +131,9 @@ Notes:
 - Architecture and plan remain coherent with code (filepaths + contracts verified by smoke tests).
 
 **Verification Checklist (code-backed)**
-- [x] /health endpoint exists and reports readiness + metrics (file: next-server/lib/unified/server/server.ts)
-- [x] /weights endpoint exists and reports LM/Mimi readiness (file: next-server/lib/unified/server/server.ts)
-- [x] LmModel.step() implements delays pipeline entry point (file: next-server/lib/unified/models/moshi-mlx/lm.ts)
+- [x] /health endpoint exists and reports readiness + metrics (file: next-server/backend/server/server.ts)
+- [x] /weights endpoint exists and reports LM/Mimi readiness (file: next-server/backend/server/server.ts)
+- [x] LmModel.step() implements delays pipeline entry point (file: next-server/backend/models/moshi-mlx/lm.ts)
 - [x] isReady()/debugInfo() present on LM; server uses them in /health and /weights
 - [ ] Mimi.loadWeights() wired and Mimi.isReady() reflects state (requires real weights)
 - [ ] Safetensors/loader path validated via models/moshi-mlx/weights/loader resolvers (set LM_REPO/MIMI_REPO)
@@ -158,7 +158,7 @@ Status update (2025-09-01 03:17 local)
 
 Next up (immediate)
 - Implement safetensors loader paths: `LmModel.loadWeights()`, `Mimi.loadWeights()`
-- [x] Expose basic step latency counters in `lib/unified/server/server.ts` `/health` (present)
+- [x] Expose basic step latency counters in `backend/server/server.ts` `/health` (present)
 
 
 ## Next 3–5 Days (2025-09-01 03:03 local)

@@ -15,7 +15,7 @@ This lightweight proxy lets the browser fetch Hugging Face model assets through 
   - Adds server-side `HF_TOKEN` as `Authorization` header
   - Streams the response back to the browser
 
-- Loader: `lib/unified/audio/whisperx/utils/modelPrefetch.ts`
+- Loader: `frontend/whisperx/src/utils/modelPrefetch.ts`
   - Honors `NEXT_PUBLIC_HF_MIRROR` (Next.js) or `VITE_HF_MIRROR` (Vite) as a mirror base
   - Accepts absolute URLs or relative paths (e.g., `/api/hf`)
 
@@ -46,4 +46,3 @@ NEXT_PUBLIC_HF_MIRROR=/api/hf
 - This proxy only supports `GET` and `HEAD`.
 - Keep `HF_TOKEN` server-side only. Browsers should not have raw tokens.
 - For private repos, ensure the token has access and, if needed, that licenses are accepted.
-

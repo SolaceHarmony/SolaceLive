@@ -12,9 +12,9 @@ This workspace collects the browser-facing pieces of SolaceLive: the WebGPU fast
 
 The runnable code still lives under `next-server/`:
 
-- WhisperX engine: `next-server/lib/unified/audio/whisperx/**`
-- Packet UI components: `next-server/lib/unified/components/**/*`
-- Packet protocol helpers: `next-server/lib/unified/core/**/*`
+- WhisperX engine: `frontend/whisperx/src/**`
+- Packet UI helpers: `next-server/backend/services/packetStreamingService.ts`
+- Packet protocol helpers: `next-server/backend/core/**/*`
 
 This folder complements that code with docs, plans, and staging areas for the production UI.
 

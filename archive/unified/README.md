@@ -5,4 +5,4 @@
 - `services/` — browser services (speech synthesis, VAD, whisper WASM) removed from production.
 - `tests/` — legacy test harnesses (csm-gguf, send_pcm_frame, etc.). Retain for reference but do not run as part of main build.
 
-Move pieces back into `next-server/lib/unified/` only after they’re updated to current architecture.
+Move pieces back into `next-server/backend/` only after they’re updated to current architecture.

@@ -2,9 +2,9 @@
 
 Client-facing pieces for the packetised Moshi/Mimi loop currently live at:
 
-- LM + Mimi bindings: `next-server/lib/unified/models/moshi-mlx/**`
-- Packet protocol + queues: `next-server/lib/unified/core/**/*`
-- Placeholder voice interface: `next-server/lib/unified/components/PacketStreamingVoiceInterface.tsx`
+- LM + Mimi bindings: `next-server/backend/models/moshi-mlx/**`
+- Packet protocol + queues: `next-server/backend/core/**/*`
+- Placeholder voice interface: `frontend/pages/packet-voice.tsx` (staged)
 
 ## Milestones
 
@@ -22,4 +22,4 @@ Client-facing pieces for the packetised Moshi/Mimi loop currently live at:
 ## Notes
 
 - Use the docs in `docs/ARCHITECTURE.md` and `docs/PLAN.md` for cadence, priority queues, and Mimi delays.
-- Keep WebSocket framing aligned with the server headers defined in `lib/unified/core/packets.ts`.
+- Keep WebSocket framing aligned with the server headers defined in `backend/core/packets.ts`.

@@ -28,15 +28,16 @@
     "pages/**/*.ts",
     "pages/**/*.tsx",
     "lib/**/*.ts",
-    "lib/**/*.tsx"
+    "lib/**/*.tsx",
+    "backend/**/*.ts",
+    "backend/**/*.tsx"
   ],
   "exclude": [
     "node_modules",
     ".next",
     "experiments/**/*",
-    "lib/unified/app/**",
-    "lib/unified/archive/**",
-    "lib/unified/reference/**/*",
+    "../frontend/**",
+    "../archive/**"
     "test-*.ts",
     "tests/**/*"
   ]

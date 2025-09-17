@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { createMlxEngineFromEnv, createNextTextGenerateHandler } from '../../../lib/unified/server/server';
+import { createMlxEngineFromEnv, createNextTextGenerateHandler } from '../../../backend/server/server';
 
 // Module-level singleton engine promise to avoid reloading weights on every request
 const enginePromise = createMlxEngineFromEnv();

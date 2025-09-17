@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { Readable } from 'stream';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
 // Simple Hugging Face proxy for browser model assets.
 // Usage: /api/hf/<org>/<repo>/resolve/main/<file>
@@ -48,11 +49,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!body) {
       return res.end();
     }
-    const nodeStream = Readable.fromWeb(body as unknown as ReadableStream<any>);
+    const nodeStream = Readable.fromWeb(body as WebReadableStream<Uint8Array>);
     nodeStream.pipe(res);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return res.status(502).json({ error: `Proxy failure: ${msg}` });
   }
 }
-

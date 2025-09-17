@@ -25,8 +25,7 @@ const EXCLUDE_PATTERNS = [
   '/node_modules/',
   '/.next/',
   '/experiments/',
-  '/lib/unified/archive/',
-  '/lib/unified/reference/',
+  '/archive/unified/',
   '/types/', // decl-only
 ];
 
@@ -35,7 +34,7 @@ const ENTRY_GLOBS = [
   'pages/**/*.tsx',
   'pages/**/*.ts',
   'pages/api/**/*.ts',
-  'lib/unified/server/server.ts',
+  'backend/server/server.ts',
   'scripts/smoke-test.mjs',
 ];
 

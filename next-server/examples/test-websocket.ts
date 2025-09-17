@@ -2,7 +2,7 @@
  * Test WebSocket packet streaming
  */
 
-import { PacketWebSocket, PacketType, Priority } from './lib/unified/core/websocket-client';
+import { PacketWebSocket, PacketType, Priority } from './backend/core/websocket-client';
 
 async function testWebSocket() {
   console.log('🌐 Testing WebSocket Packet System...\n');

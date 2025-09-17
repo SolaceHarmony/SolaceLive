@@ -6,7 +6,7 @@
  *   npm run inspect:gguf -- models/your.gguf
  *   or: node scripts/inspect-gguf.mjs --gguf models/your.gguf
  */
-import { readGGUF } from '../lib/unified/models/gguf/gguf.ts';
+import { readGGUF } from '../backend/models/gguf/gguf.ts';
 import path from 'node:path';
 
 function arg(flag, dflt) {

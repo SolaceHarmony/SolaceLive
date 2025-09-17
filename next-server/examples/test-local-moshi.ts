@@ -4,8 +4,8 @@
 
 import { promises as fs } from 'fs';
 import mlx from '@frost-beta/mlx';
-import { LmModel, createLmConfigFromDict } from './lib/unified';
-import { Mimi } from './lib/unified/models/moshi-mlx/mimi';
+import { LmModel, createLmConfigFromDict } from './backend/models/moshi-mlx/lm';
+import { Mimi } from './backend/models/moshi-mlx/mimi';
 
 const { core: mx } = mlx;
 
@@ -15,7 +15,7 @@ async function testLocalMoshi() {
   try {
     // Test with moshi_mlx_2b config
     console.log('1️⃣ Loading moshi_mlx_2b.json config...');
-    const configPath = './lib/unified/configs/moshi_mlx_2b.json';
+    const configPath = './backend/configs/moshi_mlx_2b.json';
     const configData = await fs.readFile(configPath, 'utf-8');
     const config = JSON.parse(configData);
     

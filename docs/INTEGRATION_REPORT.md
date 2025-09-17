@@ -1,7 +1,7 @@
 # Neuromorphic Voice Interface - Integration Report
 
 ## 2025-09-01 Packet Path Update
-- Implemented periodic WS HEARTBEAT broadcast every 5s per active client in `next-server/lib/unified/server/server.ts` using Node timers, aligned with Packet Protocol in ARCHITECTURE.md.
+- Implemented periodic WS HEARTBEAT broadcast every 5s per active client in `next-server/backend/server/server.ts` using Node timers, aligned with Packet Protocol in ARCHITECTURE.md.
 - Improved observability: `/health` now reflects underruns by incrementing `metrics.step.underruns` when:
   - Mimi.encode fails (weights missing/not ready or backend unavailable),
   - Mimi.decode fails, or

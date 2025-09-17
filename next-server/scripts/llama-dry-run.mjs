@@ -5,7 +5,7 @@
  */
 import mlx from '@frost-beta/mlx';
 const { core: mx } = mlx;
-import { LlamaModel } from '../lib/unified/models/llama/model.ts';
+import { LlamaModel } from '../backend/models/llama/model.ts';
 
 function arg(flag, dflt) {
   const i = process.argv.indexOf(flag);

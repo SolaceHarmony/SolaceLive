@@ -10,8 +10,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": [
-    "lib/unified/models/gguf/**/*.ts",
-    "lib/unified/models/llama/**/*.ts"
+    "backend/models/gguf/**/*.ts",
+    "backend/models/llama/**/*.ts"
   ]
 }
-

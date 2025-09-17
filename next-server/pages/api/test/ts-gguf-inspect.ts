@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { loadLmFromGGUF } from '../../../lib/unified/models/gguf/gguf';
-import { GGUFReader } from '../../../lib/unified/models/gguf/reader';
+import { loadLmFromGGUF } from '../../../backend/models/gguf/gguf';
+import { GGUFReader } from '../../../backend/models/gguf/reader';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {

@@ -35,8 +35,8 @@ export default function MoshiMLXPage() {
       <section style={{ marginTop: 24 }}>
         <h2 style={{ fontSize: 20, fontWeight: 600 }}>References</h2>
         <ul style={{ lineHeight: 1.8 }}>
-          <li><code>lib/unified/models/moshi-mlx/lm.ts</code> — MLX LM step implementation.</li>
-          <li><code>lib/unified/server/server.ts</code> — packet server endpoints for integration testing.</li>
+          <li><code>backend/models/moshi-mlx/lm.ts</code> — MLX LM step implementation.</li>
+          <li><code>backend/server/server.ts</code> — packet server endpoints for integration testing.</li>
           <li><code>docs/PLAN.md</code> — milestones for Moshi/Mimi loader and delay alignment.</li>
         </ul>
       </section>

@@ -23,4 +23,4 @@ This documentation set focuses on:
 - The experimental consciousness layer (models/)
 - Demos/UI for inspection (ui/) and tests (tests/)
 
-If you’re looking for production architecture or user-facing features, refer to top-level documents and unified libraries under next-server/lib/unified/.
+If you’re looking for production architecture or user-facing features, refer to top-level documents and backend libraries under `next-server/backend/`.

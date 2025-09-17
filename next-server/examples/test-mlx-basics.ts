@@ -72,9 +72,9 @@ try {
 console.log('\n5️⃣ Testing our custom MLX modules:');
 try {
   // Test importing our modules
-  const { Transformer } = await import('./lib/unified/models/moshi-mlx/transformer');
-  const { LmModel, createLmConfigFromDict } = await import('./lib/unified/models/moshi-mlx/lm');
-  const { Mimi } = await import('./lib/unified/models/moshi-mlx/mimi');
+  const { Transformer } = await import('./backend/models/moshi-mlx/transformer');
+  const { LmModel, createLmConfigFromDict } = await import('./backend/models/moshi-mlx/lm');
+  const { Mimi } = await import('./backend/models/moshi-mlx/mimi');
   
   console.log('✅ Successfully imported Transformer');
   console.log('✅ Successfully imported LmModel');

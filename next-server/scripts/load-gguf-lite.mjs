@@ -7,7 +7,7 @@
  *  npm run load:gguf -- models/gemma3-12b-csm-3.gguf
  *  npm run load:gguf -- models/gemma3-12b-csm-3.gguf --max-layers 1
  */
-import { loadLmFromGGUF, readGGUF } from '../lib/unified/models/gguf/gguf.ts';
+import { loadLmFromGGUF, readGGUF } from '../backend/models/gguf/gguf.ts';
 import path from 'node:path';
 
 function arg(flag, dflt) {

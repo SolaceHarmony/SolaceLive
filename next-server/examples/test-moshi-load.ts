@@ -6,7 +6,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import mlx from '@frost-beta/mlx';
 import { hfGet } from './lib/hf-loader';
-import { LmModel, createLmConfigFromDict } from './lib/unified/models/moshi-mlx/lm';
+import { LmModel, createLmConfigFromDict } from './backend/models/moshi-mlx/lm';
 
 const { core: mx } = mlx;
 

@@ -47,14 +47,14 @@
 - [ ] Review tests & integrate into CI.
 - [ ] Confirm decoderWorker pipeline relevance.
 
-## Unified Library (`next-server/lib/unified/*`)
+## Backend Library (`next-server/backend/*`)
 - [ ] Rebuild PacketStreamingVoiceInterface functionality.
 - [ ] Align WhisperX files with frontend plan; keep regression coverage.
 - [x] Audit services (speechService, voiceActivityDetection, whisperWasmService) — moved to `archive/unified/services/`.
 - [x] Review archive/tests/app directories — moved to `archive/unified/`.
 - [ ] Update configs, docs, utils for current architecture.
 
-## Server (`next-server/lib/unified/server/`)
+## Server (`next-server/backend/server/`)
 - [ ] Ensure README & implementation stay aligned with MLX backend work.
 
 ## API Routes (`next-server/pages/api/**`)

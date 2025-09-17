@@ -1,6 +1,6 @@
 # WhisperX Frontend
 
-The WebGPU/WASM fast-whisper port lives at `next-server/lib/unified/audio/whisperx`. It provides:
+The WebGPU/WASM fast-whisper port lives at `frontend/whisperx/src`. It provides:
 
 - Streaming transcription (`WhisperXEngine.ts`) backed by Transformers.js or WASM models.
 - Speaker diarisation, alignment, and waveform visualisation components under `components/`.
@@ -30,6 +30,5 @@ Record results in this folder before promoting the page back into `next-server/p
 
 ## Related Code
 
-- `next-server/lib/unified/components/WhisperXDemo.tsx`
-- `next-server/lib/unified/audio/whisperx/hooks/useWhisperX.ts`
+- `frontend/whisperx/src/hooks/useWhisperX.ts`
 - `docs/ARCHITECTURE.md` (Browser WhisperX section)

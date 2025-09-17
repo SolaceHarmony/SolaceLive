@@ -78,7 +78,7 @@ import {
   LmModel,
   StreamingVoiceInterface,
   WhisperXEngine
-} from '@/lib/unified';
+} from '@/backend';
 ```
 
 ## Key Features
@@ -93,11 +93,9 @@ import {
 
 All duplicate implementations have been consolidated here. Previous imports should be updated to use this unified library:
 
-- `/src/lib/moshi-protocol/` → `/next-server/lib/unified/core/`
-- `/src/lib/packet-websocket.ts` → `/next-server/lib/unified/core/websocket-client.ts`
-- `/src/lib/whisperx/` → `/next-server/lib/unified/audio/whisperx/`
-- `/src/services/` → `/next-server/lib/unified/services/`
-- `/src/components/` → `/next-server/lib/unified/components/`
+- `/src/lib/moshi-protocol/` → `/next-server/backend/core/`
+- `/src/lib/packet-websocket.ts` → `/next-server/backend/core/websocket-client.ts`
+- `/src/services/` → `/next-server/backend/services/`
 
 ## Next Steps
 

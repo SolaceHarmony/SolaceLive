@@ -4,7 +4,7 @@ This directory holds the active Next.js page implementations (`/packet-voice`, `
 
 ## Reactivation Checklist
 
-1. Copy the desired page from `frontend/pages/pages/` into `next-server/pages/`.
+1. Copy the desired page from `frontend/pages/` into `next-server/pages/`.
 2. Update imports to point at the live components/services (e.g., rebuilt `PacketStreamingVoiceInterface`).
 3. Run `npm run lint` and `npm run build` to ensure the page compiles with the backend focused build.
 4. Perform the relevant manual tests:

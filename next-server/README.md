@@ -3,7 +3,7 @@
 ## TypeScript Configs
 
 - `tsconfig.json` — primary config used by Next.js (`npm run dev` / `next build`). It targets React/Node code under `pages/` and `lib/` (excluding experiments/archive) with `noEmit` so Next handles transpilation.
-- `tsconfig.gguf.json` — extends the base config but enables emit (`outDir: dist`) for the standalone GGUF tooling under `lib/unified/models/{gguf,llama}`. Run via `npm run load:gguf` or other scripts when generating helper bundles.
+- `tsconfig.gguf.json` — extends the base config but enables emit (`outDir: dist`) for the standalone GGUF tooling under `backend/models/{gguf,llama}`. Run via `npm run load:gguf` or other scripts when generating helper bundles.
 
 Keep both files in sync when upgrading compiler options; only `tsconfig.gguf.json` should set `noEmit: false`.
 

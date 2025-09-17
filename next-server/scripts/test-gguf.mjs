@@ -5,8 +5,8 @@
  *  - Builds LLaMA model with MLX tensors
  *  - Runs a small forward pass and prints top-5 token ids for the last position
  */
-import { loadLmFromGGUF } from '../lib/unified/models/gguf/gguf.ts';
-import { LlamaModel } from '../lib/unified/models/llama/model.ts';
+import { loadLmFromGGUF } from '../backend/models/gguf/gguf.ts';
+import { LlamaModel } from '../backend/models/llama/model.ts';
 
 function arg(flag, dflt) {
   const i = process.argv.indexOf(flag);

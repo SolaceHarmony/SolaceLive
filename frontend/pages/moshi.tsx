@@ -38,7 +38,7 @@ export default function MoshiPage() {
         <h2 style={{ fontSize: 20, fontWeight: 600 }}>Backend Notes</h2>
         <ul style={{ lineHeight: 1.8 }}>
           <li>
-            Packet headers are defined in <code>lib/unified/core/packets.ts</code>; Moshi responses come back as Mimi codebooks +
+            Packet headers are defined in <code>backend/core/packets.ts</code>; Moshi responses come back as Mimi codebooks +
             text ids.
           </li>
           <li>

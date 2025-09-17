@@ -36,8 +36,8 @@ export default function PacketVoicePage() {
       <section style={{ marginTop: 24 }}>
         <h2 style={{ fontSize: 20, fontWeight: 600 }}>Reference Implementation Notes</h2>
         <ul style={{ lineHeight: 1.8 }}>
-          <li><code>lib/unified/services/packetStreamingService.ts</code> — orchestrates WS connection.</li>
-          <li><code>lib/unified/utils/audioPlayer.ts</code> — jitter-buffer playback helper.</li>
+          <li><code>backend/services/packetStreamingService.ts</code> — orchestrates WS connection.</li>
+          <li><code>backend/utils/audioPlayer.ts</code> — jitter-buffer playback helper.</li>
           <li><code>docs/ARCHITECTURE.md</code> — cadence, packet priority, backpressure policies.</li>
         </ul>
       </section>
